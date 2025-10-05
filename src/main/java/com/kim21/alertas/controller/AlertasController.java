@@ -47,6 +47,14 @@ public class AlertasController
         return alertasService.getAlertsByProcesoAndGrupoLocalAndInitAndEndDate(proceso,activo, initDate, endDate);
     }
 
+
+    @PostMapping("/filter-dynamic")
+    public ResponseEntity<?> filtrarAlertas(@RequestBody Map<String, Object> filtros) 
+    {
+        return alertasService.filtrarDinamico(filtros);
+    }
+
+
     // Endpoint para marcar alerta como leída
     @PostMapping("/marcar-leida")
     public ResponseEntity<?> marcarAlertaComoLeida(@RequestBody AlertMarcarLeidaDTO dto) 
@@ -84,6 +92,12 @@ public class AlertasController
     {
         Integer seconds = body.get("seconds");
         return alertaConfigServiceImpl.setRefreshSeconds(seconds);
+    }
+
+    @GetMapping("/get-alertas-activas")
+    public ResponseEntity<?> getAlertasActivas() 
+    {
+        return alertasService.getAlertasActivas();
     }
 
 }

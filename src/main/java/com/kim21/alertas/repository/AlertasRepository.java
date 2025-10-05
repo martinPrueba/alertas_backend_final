@@ -91,4 +91,7 @@ public interface AlertasRepository extends JpaRepository<AlertasModel, Integer>
     List<AlertasModel> findAllByAlertaid(Integer alertaId);
 
 
+    List<AlertasModel> findByFechaReconocimientoIsNullAndTiempoReconocimientoIsNullAndGrupoLocalIn(List<String> gruposCoincidentesParaBuscar);
+
+
 }

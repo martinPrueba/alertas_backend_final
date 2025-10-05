@@ -6,7 +6,9 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.reflect.Method;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -31,9 +33,20 @@ import com.kim21.alertas.repository.AlertasRepository;
 import com.kim21.alertas.repository.ProcessAssociateIconRepository;
 import com.kim21.alertas.repository.VisibleFieldConfigRepository;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Path;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+
 @Service
 public class AlertasServiceImpl implements AlertasService 
 {
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Autowired
     private AlertasRepository alertasRepository;
@@ -867,6 +880,170 @@ public class AlertasServiceImpl implements AlertasService
         {
             e.printStackTrace();
             return ResponseEntity.status(404).body(Map.of("error","Ha ocurrido un error interno"));
+        }
+
+    }
+
+    @Override
+    public ResponseEntity<?> filtrarDinamico(Map<String, Object> filtros) 
+    {
+        try 
+        {
+
+        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+        CriteriaQuery<AlertasModel> query = cb.createQuery(AlertasModel.class);
+        Root<AlertasModel> root = query.from(AlertasModel.class);
+
+        List<Predicate> predicates = new ArrayList<>();
+
+
+        // --------------------------
+        // 🕐 FILTRO POR FECHAS (solo día/mes/año)
+        // --------------------------
+        Object fechaInicioObj = filtros.get("fechaInicio");
+        Object fechaFinObj = filtros.get("fechaFin");
+
+        boolean tieneInicio = fechaInicioObj != null && !fechaInicioObj.toString().isBlank();
+        boolean tieneFin = fechaFinObj != null && !fechaFinObj.toString().isBlank();
+
+        if (tieneInicio || tieneFin) 
+        {
+            try 
+            {
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
+                // Si se envían, las parseamos a LocalDate
+                LocalDate fechaInicio = tieneInicio ? LocalDate.parse(fechaInicioObj.toString(), formatter) : null;
+                LocalDate fechaFin = tieneFin ? LocalDate.parse(fechaFinObj.toString(), formatter) : null;
+
+                // Convertimos LocalDate → OffsetDateTime (a medianoche local)
+                ZoneOffset offsetChile = ZoneOffset.of("-03:00");
+                Path<OffsetDateTime> campoFecha = root.get("fechaestado");
+
+                if (fechaInicio != null && fechaFin != null) 
+                {
+                    // Ambos límites → between (inicio del día hasta fin del día)
+                    OffsetDateTime inicioDelDia = fechaInicio.atStartOfDay().atOffset(offsetChile);
+                    OffsetDateTime finDelDia = fechaFin.plusDays(1).atStartOfDay().atOffset(offsetChile).minusNanos(1);
+
+                    predicates.add(cb.between(campoFecha, inicioDelDia, finDelDia));
+                } 
+                else if (fechaInicio != null) 
+                {
+                    // Solo fechaInicio → >=
+                    OffsetDateTime inicioDelDia = fechaInicio.atStartOfDay().atOffset(offsetChile);
+                    predicates.add(cb.greaterThanOrEqualTo(campoFecha, inicioDelDia));
+                } 
+                else 
+                {
+                    // Solo fechaFin → <=
+                    OffsetDateTime finDelDia = fechaFin.plusDays(1).atStartOfDay().atOffset(offsetChile).minusNanos(1);
+                    predicates.add(cb.lessThanOrEqualTo(campoFecha, finDelDia));
+                }
+
+            } 
+            catch (Exception e) 
+            {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "error", "Formato de fecha inválido",
+                    "detalle", "Usa formato: 2025-10-04 (solo día/mes/año)"
+                ));
+            }
+        }
+
+
+filtros.forEach((campo, valor) -> {
+    if (valor == null || campo == null) {
+        return;
+    }
+
+    // ignoramos los que ya manejamos
+    if (campo.equalsIgnoreCase("fechaInicio") || campo.equalsIgnoreCase("fechaFin")) {
+        return;
+    }
+
+    try {
+        Path<Object> path = root.get(campo);
+
+        if (valor instanceof String) {
+            predicates.add(cb.like(cb.lower(path.as(String.class)),
+                    "%" + valor.toString().toLowerCase() + "%"));
+        } else if (valor instanceof Number) {
+            predicates.add(cb.equal(path, valor));
+        } else if (valor instanceof Boolean) {
+            predicates.add(cb.equal(path.as(Boolean.class), (Boolean) valor));
+        } else if (valor instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> rango = (Map<String, Object>) valor;
+
+            if (rango.containsKey("min") && rango.containsKey("max")) {
+                predicates.add(cb.between(
+                    path.as(Double.class),
+                    cb.literal(((Number) rango.get("min")).doubleValue()),
+                    cb.literal(((Number) rango.get("max")).doubleValue())
+                ));
+            } else if (rango.containsKey("min")) {
+                predicates.add(cb.greaterThanOrEqualTo(
+                    path.as(Double.class),
+                    cb.literal(((Number) rango.get("min")).doubleValue())
+                ));
+            } else if (rango.containsKey("max")) {
+                predicates.add(cb.lessThanOrEqualTo(
+                    path.as(Double.class),
+                    cb.literal(((Number) rango.get("max")).doubleValue())
+                ));
+            }
+        }
+
+    } catch (IllegalArgumentException e) {
+        // campo inexistente → lo ignoramos silenciosamente
+        System.out.println("⚠️ Campo ignorado: " + campo);
+    }
+});
+
+
+        query.where(cb.and(predicates.toArray(new Predicate[0])));
+
+        List<AlertasModel> result = entityManager.createQuery(query).getResultList();
+        return ResponseEntity.ok(result);
+
+        } 
+        catch (Exception e) 
+        {
+            // TODO: handle exception
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(
+                Map.of("error", "Error al filtrar dinámicamente", "detalle", e.getMessage())
+            );
+        }
+
+    }
+
+    @Override
+    public ResponseEntity<?> getAlertasActivas() 
+    {
+        try 
+        {
+            List<String> gruposCoincidentesParaBuscar =  obtenerGruposCoincidentesConAlertas();
+            System.out.println("ESTE ES EL GRUPOOOOOO QUE EL USUARIO COINCIDE " + gruposCoincidentesParaBuscar);
+            // Buscar alertas donde fecha_reconocimiento y tiempo_reconocimiento son NULL
+            List<AlertasModel> alertasActivas = alertasRepository.findByFechaReconocimientoIsNullAndTiempoReconocimientoIsNullAndGrupoLocalIn(gruposCoincidentesParaBuscar);
+
+            if (alertasActivas.isEmpty()) 
+            {
+                return ResponseEntity.status(HttpStatus.NO_CONTENT).body(Map.of("mensaje", "No se encontraron alertas activas"));
+            }
+
+            return ResponseEntity.ok(alertasActivas);
+
+        } 
+        catch (Exception e) 
+        {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().body(Map.of(
+                "error", "Error al obtener las alertas activas",
+                "detalle", e.getMessage()
+            ));
         }
 
     }

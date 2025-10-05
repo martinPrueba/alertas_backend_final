@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -42,6 +43,8 @@ public interface AlertasService {
     ResponseEntity<?> reportAlerts();
     ResponseEntity<?> getProcesos();
     ResponseEntity<?> getActivos();
+    ResponseEntity<?> filtrarDinamico( Map<String, Object> filtros);
+    ResponseEntity<?> getAlertasActivas();
 
 
 }
