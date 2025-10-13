@@ -45,6 +45,7 @@ public interface AlertasService {
     ResponseEntity<?> getActivos();
     ResponseEntity<?> filtrarDinamico( Map<String, Object> filtros);
     ResponseEntity<?> getAlertasActivas();
+    ResponseEntity<?> getTipos();
 
 
 }

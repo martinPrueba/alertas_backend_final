@@ -158,3 +158,5 @@ public class AlertasModel {
     private Long tiempoReconocimiento; // minutos de demora
 
 }
+
+

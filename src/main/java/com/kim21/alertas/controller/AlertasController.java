@@ -100,4 +100,10 @@ public class AlertasController
         return alertasService.getAlertasActivas();
     }
 
+    @GetMapping("/get-tipos")
+    public ResponseEntity<?> getTipos()
+    {
+        return alertasService.getTipos();
+    }
+
 }

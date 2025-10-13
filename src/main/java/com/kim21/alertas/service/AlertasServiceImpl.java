@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -120,11 +121,9 @@ public class AlertasServiceImpl implements AlertasService
                     }
                 }
 
-                System.out.println("ESTOS SON LOS PROCESOS QUE ESTAMOS BUSCANDO " + alerta.getProceso());
 
                 //agregamos campo de iconAssocieteFromProceso en ProcessAssociateIconModel
                 Optional<ProcessAssociateIconModel> findIconUrl = processAssociateIconRepository.findByProceso(alerta.getProceso());
-                                System.out.println("MIRA POR EJEMPLOOOOOOOOOOO ProcessAssociateIconModel " + findIconUrl);
 
                 if(!findIconUrl.isPresent())
                 {
@@ -1005,7 +1004,31 @@ filtros.forEach((campo, valor) -> {
         query.where(cb.and(predicates.toArray(new Predicate[0])));
 
         List<AlertasModel> result = entityManager.createQuery(query).getResultList();
-        return ResponseEntity.ok(result);
+
+        //diferencias entre alertas Leidas y alertas normales
+        List<AlertasModel> alertasNormales = new ArrayList<>();
+        List<AlertasModel> alertasLeidas = new ArrayList<>();
+
+
+        for (AlertasModel alerta : result) 
+        {
+            //verificar si tiempo renocimiento y fechaReconocimiento es null, las agregamos a normales
+            if(alerta.getFechaReconocimiento() == null)
+            {
+                //son alertas normales
+                alertasNormales.add(alerta);
+            }
+            else
+            {
+                alertasLeidas.add(alerta);
+            }
+        }
+
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("alertas", alertasNormales);
+        response.put("alertasLeidas", alertasLeidas);
+        return ResponseEntity.ok(response);
 
         } 
         catch (Exception e) 
@@ -1025,17 +1048,96 @@ filtros.forEach((campo, valor) -> {
         try 
         {
             List<String> gruposCoincidentesParaBuscar =  obtenerGruposCoincidentesConAlertas();
-            System.out.println("ESTE ES EL GRUPOOOOOO QUE EL USUARIO COINCIDE " + gruposCoincidentesParaBuscar);
             // Buscar alertas donde fecha_reconocimiento y tiempo_reconocimiento son NULL
             List<AlertasModel> alertasActivas = alertasRepository.findByFechaReconocimientoIsNullAndTiempoReconocimientoIsNullAndGrupoLocalIn(gruposCoincidentesParaBuscar);
 
-            if (alertasActivas.isEmpty()) 
+            //ahora debemos ocupar el filtr para saber que columnas podemos retornar basado en la configuracion 
+            // Obtener campos visibles desde la configuración
+            List<String> camposVisibles = visibleFieldConfigRepository.findAll()
+                .stream()
+                .filter(VisibleFieldConfigModel::getVisible) // Solo los que están en true
+                .map(VisibleFieldConfigModel::getFieldName)
+                .collect(Collectors.toList());
+
+                            // Convertimos cada alerta a un Map con solo los campos visibles
+            List<Map<String, Object>> resultado = new ArrayList<>();
+
+            List<Map<String, Object>> alertasVisiblesNormales = new ArrayList<>();
+
+            for (AlertasModel alerta : alertasActivas) 
             {
-                return ResponseEntity.status(HttpStatus.NO_CONTENT).body(Map.of("mensaje", "No se encontraron alertas activas"));
+
+                Map<String, Object> visibleData = new HashMap<>();
+
+                for (String campo : camposVisibles) 
+                {
+                    try 
+                    {
+
+                        String fieldName = COLUMN_TO_FIELD.getOrDefault(campo, campo);
+                        String getterName = "get" + Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);
+
+
+                        // Obtiene el método de la clase
+                        Method getter = AlertasModel.class.getMethod(getterName);
+
+                        // Invoca el getter sobre la instancia actual
+                        Object valor = getter.invoke(alerta);
+
+                        // 👀 Sanitizar fecha_reconocimiento
+                        if ("fecha_reconocimiento".equalsIgnoreCase(campo) && valor != null) 
+                        {
+                            OffsetDateTime fecha = (OffsetDateTime) valor;
+                            valor = fecha.format(FORMATTER);
+                        }
+
+                        // 👀 Sanitizar fecha_reconocimiento
+                        if ("tiempo_reconocimiento".equalsIgnoreCase(campo) && valor != null) 
+                        {
+                            
+                            valor = valor + " Minutos";
+                        }
+
+                        // Añade al map el nombre del campo y el valor
+                        visibleData.put(campo, valor);
+
+                        //System.out.println(campo + " y el valor: " + valor);
+
+                    } catch (Exception e) 
+                    {
+                        // Log opcional si un campo no se puede acceder
+                        System.err.println("Error accediendo al campo: " + campo + " → " + e.getMessage());
+                    }
+                }
+
+
+                //agregamos campo de iconAssocieteFromProceso en ProcessAssociateIconModel
+                Optional<ProcessAssociateIconModel> findIconUrl = processAssociateIconRepository.findByProceso(alerta.getProceso());
+                if(!findIconUrl.isPresent())
+                {
+                    //alerta.setIconAssocieteFromProceso("No existe un icono asociado al proceso.");
+                    visibleData.put("IconAssocieteFromProceso", "No existe un icono asociado al proceso.");
+                }
+                else
+                {
+                    //buscar la url asociada al proceso en 
+                    //alerta.setIconAssocieteFromProceso(findIconUrl.get().getIconUrl());
+
+                    visibleData.put("IconAssocieteFromProceso", findIconUrl.get().getIconUrl());
+                }    
+            
+                
+
+                alertasVisiblesNormales.add(visibleData);
             }
 
-            return ResponseEntity.ok(alertasActivas);
+            Map<String, Object> response = new HashMap<>();
+            response.put("alertas", alertasVisiblesNormales); // las visibles
+            response.put("alertasLeidas", null);
+            resultado.add(response);
 
+            return ResponseEntity.ok(resultado);
+            
         } 
         catch (Exception e) 
         {
@@ -1048,6 +1150,75 @@ filtros.forEach((campo, valor) -> {
 
     }
 
+
+
+    @Override
+    public ResponseEntity<?> getTipos()
+    {
+        try
+        {
+            List<String> gruposCoincidentesParaBuscar =  obtenerGruposCoincidentesConAlertas();
+            if(gruposCoincidentesParaBuscar.isEmpty())
+            {
+                return ResponseEntity.status(404).body(Map.of("message","No existen grupos asociados al usuario."));
+            }
+
+            Map<String, Object> tipos = new HashMap<>();
+            tipos.put("procesos", alertasRepository.findDistinctProcesosByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("nombreActivo", alertasRepository.findAllDistintActivosAndGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("codalerta", alertasRepository.findDistinctCodalertaByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("nombre", alertasRepository.findDistinctNombreByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("sentenciaId", alertasRepository.findDistinctSentenciaIdByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("identificacionalerta", alertasRepository.findDistinctIdentificacionAlertaByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("latencia", alertasRepository.findDistinctLatenciaByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("tipoServicio", alertasRepository.findDistinctTipoServicioByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("CI", alertasRepository.findDistinctCiByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("Subtiposervicio", alertasRepository.findDistinctSubtipoServicioByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("jitter", alertasRepository.findDistinctJitterByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("disponibilidad", alertasRepository.findDistinctDisponibilidadByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("packetlost", alertasRepository.findDistinctPacketLostByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("rssi", alertasRepository.findDistinctRssiByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("nsr", alertasRepository.findDistinctNsrByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("PLM", alertasRepository.findDistinctPlmByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("tipoExWa", alertasRepository.findDistinctTipoExWaByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("codigoEvento", alertasRepository.findDistinctCodigoEventoByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("descripcionevento", alertasRepository.findDistinctDescripcionEventoByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("Origen", alertasRepository.findDistinctOrigenByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("tipodocumento", alertasRepository.findDistinctTipoDocumentoByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("estado", alertasRepository.findDistinctEstadoByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("resumen", alertasRepository.findDistinctResumenByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("titulo", alertasRepository.findDistinctTituloByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("numero", alertasRepository.findDistinctNumeroByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("razonestado", alertasRepository.findDistinctRazonEstadoByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("gpsx", alertasRepository.findDistinctGpsxByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("gpsy", alertasRepository.findDistinctGpsyByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("gpsz", alertasRepository.findDistinctGpszByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("gpsh", alertasRepository.findDistinctGpshByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("radio", alertasRepository.findDistinctRadioByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("severidad", alertasRepository.findDistinctSeveridadByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("comentario", alertasRepository.findDistinctComentarioByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("OT", alertasRepository.findDistinctOtByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("ticket", alertasRepository.findDistinctTicketByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("prediccion", alertasRepository.findDistinctPrediccionByGrupoLocal(gruposCoincidentesParaBuscar));
+            tipos.put("tiempoReconocimiento", alertasRepository.findDistinctTiempoReconocimientoByGrupoLocal(gruposCoincidentesParaBuscar));
+
+            boolean existenValores = tipos.values().stream()
+                    .filter(Objects::nonNull)
+                    .anyMatch(valor -> valor instanceof List<?> && !((List<?>) valor).isEmpty());
+
+            if(!existenValores)
+            {
+                return ResponseEntity.status(404).body(Map.of("message","No existen tipos asociados al usuario."));
+            }
+
+            return ResponseEntity.ok(tipos);
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+            return ResponseEntity.status(404).body(Map.of("error","Ha ocurrido un error interno"));
+        }
+    }
 
 
 }
