@@ -29,9 +29,12 @@ import org.springframework.stereotype.Service;
 import com.fasterxml.jackson.core.util.InternCache;
 import com.kim21.alertas.dto.AlertMarcarLeidaDTO;
 import com.kim21.alertas.dto.AlertReportDTO;
+import com.kim21.alertas.model.AlertasCodigo1Model;
 import com.kim21.alertas.model.AlertasModel;
 import com.kim21.alertas.model.ProcessAssociateIconModel;
 import com.kim21.alertas.model.VisibleFieldConfigModel;
+import com.kim21.alertas.repository.AlertasCodigo1Repository;
+import com.kim21.alertas.repository.AlertasCodigo2Repository;
 import com.kim21.alertas.repository.AlertasRepository;
 import com.kim21.alertas.repository.ProcessAssociateIconRepository;
 import com.kim21.alertas.repository.VisibleFieldConfigRepository;
@@ -68,6 +71,12 @@ public class AlertasServiceImpl implements AlertasService
     // 👉 Define el formato
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
+    @Autowired
+    private AlertasCodigo1Repository alertasCodigo1Repository;
+
+    @Autowired
+    private AlertasCodigo2Repository alertasCodigo2Repository;
+    
     // ALERTAS
     @Override
     public ResponseEntity<?> findAllAlertas() 
@@ -451,6 +460,21 @@ public class AlertasServiceImpl implements AlertasService
                 return ResponseEntity.badRequest() .body(Map.of("message", "El comentario no puede exceder los 80 caracteres."));
             }
 
+
+            // 5. Validar existencia de códigos
+            boolean codigo1Existe = alertasCodigo1Repository.existsByCodcodigo1(dto.getCodigo1());
+            boolean codigo2Existe = alertasCodigo2Repository.existsByCodcodigo2(dto.getCodigo2());
+
+            if (!codigo1Existe) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "El código1 no existe en la base de datos."));
+            }
+
+            if (!codigo2Existe) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "El código2 no existe en la base de datos."));
+            }
+
             // 4: calcular tiempo transcurrido entre inicioevento y ahora
             OffsetDateTime fechaReconocimiento = OffsetDateTime.now();
             long tiempoReconocimiento = Duration.between(alerta.getInicioevento(), fechaReconocimiento).toMinutes();
@@ -461,6 +485,8 @@ public class AlertasServiceImpl implements AlertasService
             alerta.setValida(dto.isValida());
             alerta.setFechaReconocimiento(fechaReconocimiento);
             alerta.setTiempoReconocimiento(tiempoReconocimiento);
+            alerta.setCodigo1(dto.getCodigo1());
+            alerta.setCodigo2(dto.getCodigo2());
 
             alertasRepository.save(alerta);
 

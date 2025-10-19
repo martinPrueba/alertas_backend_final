@@ -157,6 +157,11 @@ public class AlertasModel {
     @Column(name = "tiempo_reconocimiento")
     private Long tiempoReconocimiento; // minutos de demora
 
+    @Column(name = "codigo1")
+    private String codigo1;
+
+    @Column(name = "codigo2")
+    private String codigo2;
 }
 
 

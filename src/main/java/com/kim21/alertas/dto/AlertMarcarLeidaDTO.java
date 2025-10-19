@@ -15,4 +15,6 @@ public class AlertMarcarLeidaDTO
     private Integer idAlerta;
     private boolean valida;
     private String comentario;
+    private String codigo1;
+    private String codigo2;
 }
