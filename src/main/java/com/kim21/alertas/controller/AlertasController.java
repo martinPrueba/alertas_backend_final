@@ -2,6 +2,7 @@ package com.kim21.alertas.controller;
 
 import com.kim21.alertas.dto.AlertFilterDTO;
 import com.kim21.alertas.dto.AlertMarcarLeidaDTO;
+import com.kim21.alertas.dto.AlertReportDTO;
 import com.kim21.alertas.service.AlertaConfigServiceImpl;
 import com.kim21.alertas.service.AlertasService;
 import lombok.RequiredArgsConstructor;
@@ -104,6 +105,12 @@ public class AlertasController
     public ResponseEntity<?> getTipos()
     {
         return alertasService.getTipos();
+    }
+
+    @PostMapping("/reporte-alertas-dynamic")
+    public ResponseEntity<?> reportAlertsDynamic( @RequestBody AlertReportDTO dto) 
+    {
+        return alertasService.reportAlertsDynamic(dto);
     }
 
 }

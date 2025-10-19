@@ -26,7 +26,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
+import com.fasterxml.jackson.core.util.InternCache;
 import com.kim21.alertas.dto.AlertMarcarLeidaDTO;
+import com.kim21.alertas.dto.AlertReportDTO;
 import com.kim21.alertas.model.AlertasModel;
 import com.kim21.alertas.model.ProcessAssociateIconModel;
 import com.kim21.alertas.model.VisibleFieldConfigModel;
@@ -1219,6 +1221,145 @@ filtros.forEach((campo, valor) -> {
             return ResponseEntity.status(404).body(Map.of("error","Ha ocurrido un error interno"));
         }
     }
+
+    @Override
+    public ResponseEntity<?> reportAlertsDynamic(AlertReportDTO dto) {
+        try {
+            if (dto.getAlertas() == null) 
+            {
+                return ResponseEntity.badRequest().body(Map.of("error", "La lista de alertas está vacía o no fue enviada."));
+            }
+
+            Map<String, Object> mapaReporte = new HashMap<>();
+
+            // 1. Cantidad total de alertas activas
+            Integer alertasActivasSize = 0;
+            if(!dto.getAlertas().isEmpty())
+            {
+                alertasActivasSize = dto.getAlertas().size();
+            }
+            else
+            {
+                alertasActivasSize = 0;
+            }
+
+            mapaReporte.put("cantidadActivas", alertasActivasSize);
+
+            // 2.´POR PROCESO
+            Map<String,Integer> mapProceso = new HashMap<>();
+
+            for (Object alerta : dto.getAlertas()) 
+            {
+                Map<String,Object> mapAlerta = (Map<String,Object>) alerta;
+
+                String proceso = (String) mapAlerta.get("proceso");
+                if(proceso != null)
+                {   
+                    mapProceso.put(proceso, mapProceso.getOrDefault(proceso, 0) + 1);
+                }
+            }
+
+            for (Object alerta : dto.getAlertasLeidas()) 
+            {
+                Map<String,Object> mapAlerta = (Map<String,Object>) alerta;
+
+                String proceso = (String) mapAlerta.get("proceso");
+                if(proceso != null)
+                {   
+                    mapProceso.put(proceso, mapProceso.getOrDefault(proceso, 0) + 1);
+                }
+            }
+            mapaReporte.put("alertasPorProceso", mapProceso);
+
+
+
+
+
+            // 3. Por tipo de servicio
+            Map<String,Integer> mapTipoServicio = new HashMap<>();
+
+            for (Object alerta : dto.getAlertas()) 
+            {
+                Map<String,Object> mapAlerta = (Map<String,Object>) alerta;
+
+                String tipoServicio = (String) mapAlerta.get("tipoServicio");
+                if(tipoServicio != null)
+                {   
+                    mapTipoServicio.put(tipoServicio, mapTipoServicio.getOrDefault(tipoServicio, 0) + 1);
+                }
+            }
+
+            for (Object alerta : dto.getAlertasLeidas()) 
+            {
+                Map<String,Object> mapAlerta = (Map<String,Object>) alerta;
+
+                String tipoServicio = (String) mapAlerta.get("proceso");
+                if(tipoServicio != null)
+                {   
+                    mapTipoServicio.put(tipoServicio, mapTipoServicio.getOrDefault(tipoServicio, 0) + 1);
+                }
+            }
+
+            mapaReporte.put("alertasPorTipoServicio", mapTipoServicio);
+
+
+
+            // 3. Por CRITICIDAD
+            Map<String,Integer> mapCriticidad = new HashMap<>();
+
+            for (Object alerta : dto.getAlertas()) 
+            {
+                Map<String,Object> mapAlerta = (Map<String,Object>) alerta;
+
+                String severidad = (String) mapAlerta.get("severidad");
+                if(severidad != null)
+                {   
+                    mapCriticidad.put(severidad, mapCriticidad.getOrDefault(severidad, 0) + 1);
+                }
+            }
+
+            for (Object alerta : dto.getAlertasLeidas()) 
+            {
+                Map<String,Object> mapAlerta = (Map<String,Object>) alerta;
+
+                String severidad = (String) mapAlerta.get("severidad");
+                if(severidad != null)
+                {   
+                    mapCriticidad.put(severidad, mapCriticidad.getOrDefault(severidad, 0) + 1);
+                }
+            }
+
+            mapaReporte.put("alertasPorCriticidad", mapCriticidad);
+
+
+            return ResponseEntity.ok(mapaReporte);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500)
+                .body(Map.of("error", "Ha ocurrido un error interno en el reporte dinámico."));
+        }
+    }
+
+    private int contarPorCampo(List<Object> lista, String campo) 
+    {
+        int contador = 0;
+        for (Object obj : lista) 
+        {
+            if (obj instanceof Map) 
+            {
+                Map<String, Object> map = (Map<String, Object>) obj;
+                Object valor = map.get(campo);
+                if (valor != null) 
+                {
+                    contador++;
+                }
+            }
+        }
+        return contador;
+    }
+
+
 
 
 }

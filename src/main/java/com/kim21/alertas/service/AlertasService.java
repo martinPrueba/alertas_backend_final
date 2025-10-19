@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import com.kim21.alertas.dto.AlertFilterDTO;
 import com.kim21.alertas.dto.AlertMarcarLeidaDTO;
+import com.kim21.alertas.dto.AlertReportDTO;
 
 public interface AlertasService {
 
@@ -46,6 +47,7 @@ public interface AlertasService {
     ResponseEntity<?> filtrarDinamico( Map<String, Object> filtros);
     ResponseEntity<?> getAlertasActivas();
     ResponseEntity<?> getTipos();
+    ResponseEntity<?> reportAlertsDynamic(AlertReportDTO dto);
 
 
 }
