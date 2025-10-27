@@ -19,10 +19,10 @@ public interface AlertasRepository extends JpaRepository<AlertasModel, Integer>
     List<String> obtenerGruposLocalesUnicos();
 
 
-    @Query("SELECT a FROM AlertasModel a WHERE a.grupoLocal IN :grupos AND a.fechaReconocimiento IS NULL")
+    @Query("SELECT a FROM AlertasModel a WHERE a.grupoLocal IN :grupos AND a.valida IS NULL")
     List<AlertasModel> findAllAlertsByGroupUser(@Param("grupos") List<String> grupos);
 
-    @Query("SELECT a FROM AlertasModel a WHERE a.grupoLocal IN :grupos AND a.fechaReconocimiento IS NOT NULL")
+    @Query("SELECT a FROM AlertasModel a WHERE a.grupoLocal IN :grupos AND a.valida IS NOT NULL")
     List<AlertasModel> findAllAlertsByGroupUserLeidas(@Param("grupos") List<String> grupos);
 
 
@@ -31,7 +31,7 @@ public interface AlertasRepository extends JpaRepository<AlertasModel, Integer>
         "WHERE (:proceso IS NULL OR a.proceso = :proceso) " +
         "AND (:activo IS NULL OR a.nombreActivo = :activo) " +
         "AND (:grupos IS NULL OR a.grupoLocal IN :grupos) " +
-        "AND a.fechaReconocimiento IS NOT NULL " +
+        "AND a.valida IS NOT NULL " +
         "AND (:initDate IS NULL OR a.inicioevento >= :initDate) " +
         "AND (:endDate IS NULL OR a.inicioevento <= :endDate)")
         List<AlertasModel> findByProcesoAndGruposAndDateRangeLeidas(
@@ -48,7 +48,7 @@ public interface AlertasRepository extends JpaRepository<AlertasModel, Integer>
         "WHERE (:proceso IS NULL OR a.proceso = :proceso) " +
         "AND (:activo IS NULL OR a.nombreActivo = :activo) " +
         "AND (:grupos IS NULL OR a.grupoLocal IN :grupos) " +
-        "AND a.fechaReconocimiento IS NULL " +
+        "AND a.valida IS NULL " +
         "AND (:initDate IS NULL OR a.inicioevento >= :initDate) " +
         "AND (:endDate IS NULL OR a.inicioevento <= :endDate)")
         List<AlertasModel> findByProcesoAndGruposAndDateRange(
@@ -61,13 +61,13 @@ public interface AlertasRepository extends JpaRepository<AlertasModel, Integer>
 
 
 
-    @Query("SELECT a FROM AlertasModel a WHERE a.fechaReconocimiento IS NOT NULL")
+    @Query("SELECT a FROM AlertasModel a WHERE a.valida IS NOT NULL")
     List<AlertasModel> findAllReadAlerts();
 
 
 
         // 1. Cantidad de alertas activas
-    @Query("SELECT COUNT(a) FROM AlertasModel a WHERE a.fechaReconocimiento IS NULL")
+    @Query("SELECT COUNT(a) FROM AlertasModel a WHERE a.valida IS NULL")
     Long countAlertasActivas();
 
     // 2. Cantidad de alertas agrupadas por proceso
@@ -91,7 +91,7 @@ public interface AlertasRepository extends JpaRepository<AlertasModel, Integer>
     List<AlertasModel> findAllByAlertaid(Integer alertaId);
 
 
-    List<AlertasModel> findByFechaReconocimientoIsNullAndTiempoReconocimientoIsNullAndGrupoLocalIn(List<String> gruposCoincidentesParaBuscar);
+    List<AlertasModel> findByValidaIsNullAndGrupoLocalIn(List<String> gruposCoincidentesParaBuscar);
 
 
 

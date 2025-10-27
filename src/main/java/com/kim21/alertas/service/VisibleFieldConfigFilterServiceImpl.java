@@ -2,12 +2,11 @@ package com.kim21.alertas.service;
 
 import com.kim21.alertas.model.VisibleFieldConfigFilterModel;
 import com.kim21.alertas.repository.VisibleFieldConfigFilterRepository;
-import com.kim21.alertas.service.VisibleFieldConfigFilterService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 @Service
@@ -24,12 +23,13 @@ public class VisibleFieldConfigFilterServiceImpl implements VisibleFieldConfigFi
     {
         List<VisibleFieldConfigFilterModel> list = repository.findAll();
 
-        // Transformamos la lista en un Map<String, Boolean>
-        Map<String, Boolean> map = list.stream()
-                .collect(Collectors.toMap(
-                        VisibleFieldConfigFilterModel::getFieldName,
-                        VisibleFieldConfigFilterModel::getVisible
-                ));
+        TreeMap<String, Boolean> map = list.stream()
+            .collect(Collectors.toMap(
+                VisibleFieldConfigFilterModel::getFieldName,   // key
+                VisibleFieldConfigFilterModel::getVisible,     // value
+                (oldV, newV) -> newV,                          // fusión si hay duplicados (qué valor gana)
+                TreeMap::new                                   // supplier para que sea TreeMap
+            ));
 
         return ResponseEntity.ok(map);
     }

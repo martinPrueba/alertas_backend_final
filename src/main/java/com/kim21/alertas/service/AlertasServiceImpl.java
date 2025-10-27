@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -102,7 +103,7 @@ public class AlertasServiceImpl implements AlertasService
             for (AlertasModel alerta : alertas) 
             {
 
-                Map<String, Object> visibleData = new HashMap<>();
+                Map<String, Object> visibleData = new TreeMap<>();
 
                 for (String campo : camposVisibles) 
                 {
@@ -477,14 +478,22 @@ public class AlertasServiceImpl implements AlertasService
 
             // 4: calcular tiempo transcurrido entre inicioevento y ahora
             OffsetDateTime fechaReconocimiento = OffsetDateTime.now();
-            long tiempoReconocimiento = Duration.between(alerta.getInicioevento(), fechaReconocimiento).toMinutes();
+            
+            Long tiempoReconocimiento = null;
+            if(alerta.getInicioevento() != null && fechaReconocimiento != null)
+            {
+                tiempoReconocimiento = Duration.between(alerta.getInicioevento(), fechaReconocimiento).toMinutes();
+            }
 
             // 5: hacer el update final de la alerta
             alerta.setUserid(usuario);
             alerta.setComentario(dto.getComentario());
             alerta.setValida(dto.isValida());
             alerta.setFechaReconocimiento(fechaReconocimiento);
-            alerta.setTiempoReconocimiento(tiempoReconocimiento);
+            if(tiempoReconocimiento != null)
+            {
+                alerta.setTiempoReconocimiento(tiempoReconocimiento);
+            }
             alerta.setCodigo1(dto.getCodigo1());
             alerta.setCodigo2(dto.getCodigo2());
 
@@ -493,9 +502,7 @@ public class AlertasServiceImpl implements AlertasService
             return ResponseEntity.ok(Map.of(
                     "message", "La alerta fue marcada como leída correctamente.",
                     "alertaid", alerta.getAlertaid(),
-                    "usuario", usuario,
-                    "fecha_reconocimiento", fechaReconocimiento,
-                    "tiempo_reconocimiento_min", tiempoReconocimiento
+                    "usuario", usuario
             ));
 
         } 
@@ -1077,7 +1084,7 @@ filtros.forEach((campo, valor) -> {
         {
             List<String> gruposCoincidentesParaBuscar =  obtenerGruposCoincidentesConAlertas();
             // Buscar alertas donde fecha_reconocimiento y tiempo_reconocimiento son NULL
-            List<AlertasModel> alertasActivas = alertasRepository.findByFechaReconocimientoIsNullAndTiempoReconocimientoIsNullAndGrupoLocalIn(gruposCoincidentesParaBuscar);
+            List<AlertasModel> alertasActivas = alertasRepository.findByValidaIsNullAndGrupoLocalIn(gruposCoincidentesParaBuscar);
 
             //ahora debemos ocupar el filtr para saber que columnas podemos retornar basado en la configuracion 
             // Obtener campos visibles desde la configuración

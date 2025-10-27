@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 @RestController
 @RequestMapping("/api/visible-fields")
@@ -26,7 +27,7 @@ public class VisibleFieldConfigController
     {
         try 
         {
-            Map<String,Boolean> map = new HashMap<>();
+            TreeMap<String,Boolean> map = new TreeMap<>();
 
             for (VisibleFieldConfigModel visibleField : repository.findAll()) 
             {
