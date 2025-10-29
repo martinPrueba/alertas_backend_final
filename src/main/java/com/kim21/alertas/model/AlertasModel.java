@@ -2,6 +2,8 @@ package com.kim21.alertas.model;
 
 import java.time.OffsetDateTime;
 
+import jakarta.persistence.Transient;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -162,6 +164,10 @@ public class AlertasModel {
 
     @Column(name = "codigo2")
     private String codigo2;
+
+    @Transient
+    private String iconAssocieteFromProceso;
+
 }
 
 

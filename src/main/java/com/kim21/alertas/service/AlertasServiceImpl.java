@@ -556,7 +556,7 @@ public class AlertasServiceImpl implements AlertasService
                 Long total = (Long) row[1];
                 servicioMap.put(servicio, total);
             }
-            report.put("alertasPorServicio", servicioMap);
+            report.put("alertasPorTipoServicio", servicioMap);
 
             // 4. Cantidad por criticidad (severidad)
             List<Object[]> porCriticidad = alertasRepository.countAlertasPorCriticidad();
@@ -975,6 +975,7 @@ public class AlertasServiceImpl implements AlertasService
                     predicates.add(cb.lessThanOrEqualTo(campoFecha, finDelDia));
                 }
 
+
             } 
             catch (Exception e) 
             {
@@ -1050,6 +1051,7 @@ filtros.forEach((campo, valor) -> {
             //verificar si tiempo renocimiento y fechaReconocimiento es null, las agregamos a normales
             if(alerta.getFechaReconocimiento() == null)
             {
+
                 //son alertas normales
                 alertasNormales.add(alerta);
             }
@@ -1060,10 +1062,40 @@ filtros.forEach((campo, valor) -> {
         }
 
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("alertas", alertasNormales);
-        response.put("alertasLeidas", alertasLeidas);
-        return ResponseEntity.ok(response);
+
+
+
+        // Pre-cargar todos los íconos en memoria
+Map<String, String> iconMap = processAssociateIconRepository.findAll()
+    .stream()
+    .collect(Collectors.toMap(
+        ProcessAssociateIconModel::getProceso,
+        ProcessAssociateIconModel::getIconUrl
+    ));
+
+List<AlertasModel> normalesConIcono = alertasNormales.stream()
+    .peek(a -> a.setIconAssocieteFromProceso(
+        iconMap.getOrDefault(a.getProceso(), "No existe un icono asociado al proceso.")
+    ))
+    .collect(Collectors.toList());
+
+List<AlertasModel> leidasConIcono = alertasLeidas.stream()
+    .peek(a -> a.setIconAssocieteFromProceso(
+        iconMap.getOrDefault(a.getProceso(), "No existe un icono asociado al proceso.")
+    ))
+    .collect(Collectors.toList());
+
+Map<String, Object> response = new HashMap<>();
+response.put("alertas", normalesConIcono);
+response.put("alertasLeidas", leidasConIcono);
+
+return ResponseEntity.ok(response);
+//
+//
+//        Map<String, Object> response = new HashMap<>();
+//        response.put("alertas", alertasNormales);
+//        response.put("alertasLeidas", alertasLeidas);
+//        return ResponseEntity.ok(response);
 
         } 
         catch (Exception e) 
