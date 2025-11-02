@@ -952,7 +952,7 @@ public class AlertasServiceImpl implements AlertasService
 
                 // Convertimos LocalDate → OffsetDateTime (a medianoche local)
                 ZoneOffset offsetChile = ZoneOffset.of("-03:00");
-                Path<OffsetDateTime> campoFecha = root.get("fechaestado");
+                Path<OffsetDateTime> campoFecha = root.get("inicioevento");
 
                 if (fechaInicio != null && fechaFin != null) 
                 {
@@ -1048,10 +1048,9 @@ filtros.forEach((campo, valor) -> {
 
         for (AlertasModel alerta : result) 
         {
-            //verificar si tiempo renocimiento y fechaReconocimiento es null, las agregamos a normales
-            if(alerta.getFechaReconocimiento() == null)
+            //verificar si tiempo renocimiento y getValida es null, las agregamos a normales
+            if(alerta.getValida() == null)
             {
-
                 //son alertas normales
                 alertasNormales.add(alerta);
             }
