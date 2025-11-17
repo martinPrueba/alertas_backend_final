@@ -7,9 +7,6 @@ import org.springframework.web.bind.annotation.*;
 
 import com.kim21.alertas.model.VisibleFieldConfigModel;
 import com.kim21.alertas.repository.VisibleFieldConfigRepository;
-
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -31,7 +28,7 @@ public class VisibleFieldConfigController
 
             for (VisibleFieldConfigModel visibleField : repository.findAll()) 
             {
-                if(!visibleField.getFieldName().equals("alertaid") && !visibleField.getFieldName().equals("gpsx") && !visibleField.getFieldName().equals("gpsy"))
+                if(!visibleField.getFieldName().equals("alertaid") && !visibleField.getFieldName().equals("gpsx") && !visibleField.getFieldName().equals("gpsy") && !visibleField.getFieldName().equals("valida") && !visibleField.getFieldName().equals("gpsy") && !visibleField.getFieldName().equals("userid"))
                 {
                     if(visibleField.getFieldName() != null)
                     {

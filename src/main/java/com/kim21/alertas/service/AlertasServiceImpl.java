@@ -47,6 +47,7 @@ import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Expression;
 
 @Service
 public class AlertasServiceImpl implements AlertasService 
@@ -952,28 +953,18 @@ public class AlertasServiceImpl implements AlertasService
 
                 // Convertimos LocalDate → OffsetDateTime (a medianoche local)
                 ZoneOffset offsetChile = ZoneOffset.of("-03:00");
-                Path<OffsetDateTime> campoFecha = root.get("inicioevento");
+                Expression<LocalDate> fechaSoloDia = root.get("inicioevento").as(LocalDate.class);
 
-                if (fechaInicio != null && fechaFin != null) 
-                {
-                    // Ambos límites → between (inicio del día hasta fin del día)
-                    OffsetDateTime inicioDelDia = fechaInicio.atStartOfDay().atOffset(offsetChile);
-                    OffsetDateTime finDelDia = fechaFin.plusDays(1).atStartOfDay().atOffset(offsetChile).minusNanos(1);
-
-                    predicates.add(cb.between(campoFecha, inicioDelDia, finDelDia));
+                if (fechaInicio != null && fechaFin != null) {
+                    predicates.add(cb.between(fechaSoloDia, fechaInicio, fechaFin));
                 } 
-                else if (fechaInicio != null) 
-                {
-                    // Solo fechaInicio → >=
-                    OffsetDateTime inicioDelDia = fechaInicio.atStartOfDay().atOffset(offsetChile);
-                    predicates.add(cb.greaterThanOrEqualTo(campoFecha, inicioDelDia));
+                else if (fechaInicio != null) {
+                    predicates.add(cb.greaterThanOrEqualTo(fechaSoloDia, fechaInicio));
                 } 
-                else 
-                {
-                    // Solo fechaFin → <=
-                    OffsetDateTime finDelDia = fechaFin.plusDays(1).atStartOfDay().atOffset(offsetChile).minusNanos(1);
-                    predicates.add(cb.lessThanOrEqualTo(campoFecha, finDelDia));
+                else {
+                    predicates.add(cb.lessThanOrEqualTo(fechaSoloDia, fechaFin));
                 }
+
 
 
             } 
@@ -1084,17 +1075,35 @@ List<AlertasModel> leidasConIcono = alertasLeidas.stream()
     ))
     .collect(Collectors.toList());
 
-Map<String, Object> response = new HashMap<>();
-response.put("alertas", normalesConIcono);
-response.put("alertasLeidas", leidasConIcono);
 
-return ResponseEntity.ok(response);
-//
-//
-//        Map<String, Object> response = new HashMap<>();
-//        response.put("alertas", alertasNormales);
-//        response.put("alertasLeidas", alertasLeidas);
-//        return ResponseEntity.ok(response);
+
+    //VERIFICAR SI TIENE FILTRO DE ACTIVAS
+    Object alertasActivasRaw = filtros.get("alarmasActivas");
+
+    if(alertasActivasRaw != null)
+    {
+        boolean alertasActivas = Boolean.parseBoolean(String.valueOf(filtros.get("alarmasActivas")));
+
+        if(alertasActivas)
+        {
+            //significa que solo queremos mostrar las activas y las leidas debemos mandarlas vacias
+            Map<String, Object> response = new HashMap<>();
+            response.put("alertas", normalesConIcono);
+            response.put("alertasLeidas", new ArrayList<>());
+            return ResponseEntity.ok(response);
+        }
+    }
+
+
+
+    //si no esta activa alertas activas debemos retornar todas las alertas normales
+    Map<String, Object> response = new HashMap<>();
+    response.put("alertas", normalesConIcono);
+    response.put("alertasLeidas", leidasConIcono);
+
+    return ResponseEntity.ok(response);
+
+
 
         } 
         catch (Exception e) 
