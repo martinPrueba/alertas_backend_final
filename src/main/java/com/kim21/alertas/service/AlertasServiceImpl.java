@@ -39,6 +39,7 @@ import com.kim21.alertas.repository.AlertasCodigo2Repository;
 import com.kim21.alertas.repository.AlertasRepository;
 import com.kim21.alertas.repository.ProcessAssociateIconRepository;
 import com.kim21.alertas.repository.VisibleFieldConfigRepository;
+import com.kim21.alertas.util.AlertasUtils;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -78,12 +79,17 @@ public class AlertasServiceImpl implements AlertasService
 
     @Autowired
     private AlertasCodigo2Repository alertasCodigo2Repository;
+
+    @Autowired
+    private AlertasUtils alertasUtils;
     
     // ALERTAS
     @Override
     public ResponseEntity<?> findAllAlertas() 
     {
 
+        //llamar a logica para agregar columnas de alertas a columnas visibles por alerta
+        alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
         try 
         {
             List<String> gruposCoincidentesParaBuscar =  obtenerGruposCoincidentesConAlertas();
@@ -173,107 +179,87 @@ public class AlertasServiceImpl implements AlertasService
 
     }
 
-    @Override
-    public ResponseEntity<?> findAlertaById(Integer id) 
+@Override
+public ResponseEntity<?> findAlertaById(Integer id) 
+{
+    // Sincronizar campos nuevos
+    alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
+
+    try 
     {
-        try 
+        // 1️⃣ Obtener los valores REALES desde SQL Server (incluye columnas nuevas)
+        Map<String, Object> rawAlerta = alertasRepository.findRawAlertById(id);
+
+        if (rawAlerta == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of("error", "No existe alerta con ese ID"));
+        }
+
+        // 2️⃣ Obtener campos visibles
+        List<String> camposVisibles = visibleFieldConfigRepository.findAll()
+            .stream()
+            .filter(VisibleFieldConfigModel::getVisible)
+            .map(VisibleFieldConfigModel::getFieldName)
+            .toList();
+
+        // 3️⃣ Aquí guardaremos la alerta visible
+        List<Map<String, Object>> alertasVisiblesNormales = new ArrayList<>();
+
+        Map<String, Object> visibleData = new HashMap<>();
+
+        for (String campo : camposVisibles) 
         {
-            List<AlertasModel> alertas = alertasRepository.findAllByAlertaid(id);
+            Object valor = rawAlerta.get(campo); // ← AHORA SÍ EXISTE EL VALOR REAL
 
-            List<String> gruposCoincidentesParaBuscar =  obtenerGruposCoincidentesConAlertas();
-
-            // Obtener campos visibles desde la configuración
-            List<String> camposVisibles = visibleFieldConfigRepository.findAll()
-                .stream()
-                .filter(VisibleFieldConfigModel::getVisible) // Solo los que están en true
-                .map(VisibleFieldConfigModel::getFieldName)
-                .collect(Collectors.toList());
-
-            // Convertimos cada alerta a un Map con solo los campos visibles
-            List<Map<String, Object>> resultado = new ArrayList<>();
-
-            List<Map<String, Object>> alertasVisiblesNormales = new ArrayList<>();
-
-            for (AlertasModel alerta : alertas) 
-            {
-
-                Map<String, Object> visibleData = new HashMap<>();
-
-                for (String campo : camposVisibles) 
-                {
-                    try 
-                    {
-
-                        String fieldName = COLUMN_TO_FIELD.getOrDefault(campo, campo);
-                        String getterName = "get" + Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);
-
-
-                        // Obtiene el método de la clase
-                        Method getter = AlertasModel.class.getMethod(getterName);
-
-                        // Invoca el getter sobre la instancia actual
-                        Object valor = getter.invoke(alerta);
-
-                        // 👀 Sanitizar fecha_reconocimiento
-                        if ("fecha_reconocimiento".equalsIgnoreCase(campo) && valor != null) 
-                        {
-                            OffsetDateTime fecha = (OffsetDateTime) valor;
-                            valor = fecha.format(FORMATTER);
-                        }
-
-                        // 👀 Sanitizar fecha_reconocimiento
-                        if ("tiempo_reconocimiento".equalsIgnoreCase(campo) && valor != null) 
-                        {
-                            
-                            valor = valor + " Minutos";
-                        }
-
-                        // Añade al map el nombre del campo y el valor
-                        visibleData.put(campo, valor);
-
-                        //System.out.println(campo + " y el valor: " + valor);
-
-                    } catch (Exception e) 
-                    {
-                        // Log opcional si un campo no se puede acceder
-                        System.err.println("Error accediendo al campo: " + campo + " → " + e.getMessage());
-                    }
-                }
-
-
-                //agregamos campo de iconAssocieteFromProceso en ProcessAssociateIconModel
-                Optional<ProcessAssociateIconModel> findIconUrl = processAssociateIconRepository.findByProceso(alerta.getProceso());
-                if(!findIconUrl.isPresent())
-                {
-                    //alerta.setIconAssocieteFromProceso("No existe un icono asociado al proceso.");
-                    visibleData.put("IconAssocieteFromProceso", "No existe un icono asociado al proceso.");
-                }
-                else
-                {
-                    //buscar la url asociada al proceso en 
-                    //alerta.setIconAssocieteFromProceso(findIconUrl.get().getIconUrl());
-
-                    visibleData.put("IconAssocieteFromProceso", findIconUrl.get().getIconUrl());
-                }    
-            
-                
-
-                alertasVisiblesNormales.add(visibleData);
+            // Formateo especial de fechas (igual que antes)
+            if ("fecha_reconocimiento".equalsIgnoreCase(campo) && valor != null) {
+                OffsetDateTime fecha = OffsetDateTime.parse(valor.toString());
+                valor = fecha.format(FORMATTER);
             }
 
+            if ("tiempo_reconocimiento".equalsIgnoreCase(campo) && valor != null) {
+                valor = valor + " Minutos";
+            }
 
-            Map<String, Object> response = new HashMap<>();
-            response.put("alertas", alertasVisiblesNormales); // las visibles
-            resultado.add(response);
-
-            return ResponseEntity.ok(resultado);
-
-        } 
-        catch (Exception e) 
-        {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Error al obtener alertas filtradas", "details", e.getMessage()));
+            visibleData.put(campo, valor);
         }
+
+        // 4️⃣ Icono asociado al proceso
+        String proceso = rawAlerta.get("proceso") != null ? rawAlerta.get("proceso").toString() : null;
+
+        if (proceso != null) {
+            Optional<ProcessAssociateIconModel> findIconUrl =
+                processAssociateIconRepository.findByProceso(proceso);
+
+            visibleData.put(
+                "IconAssocieteFromProceso",
+                findIconUrl.map(ProcessAssociateIconModel::getIconUrl)
+                           .orElse("No existe un icono asociado al proceso.")
+            );
+        } else {
+            visibleData.put("IconAssocieteFromProceso", "Proceso no informado");
+        }
+
+        // Agregar alerta a la lista
+        alertasVisiblesNormales.add(visibleData);
+
+        // 5️⃣ Mantener EXACTA la estructura original de retorno
+        Map<String, Object> response = new HashMap<>();
+        response.put("alertas", alertasVisiblesNormales);
+
+        List<Object> resultado = new ArrayList<>();
+        resultado.add(response);
+
+        return ResponseEntity.ok(resultado);
+
+    } 
+    catch (Exception e) 
+    {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+            .body(Map.of("error", "Error al obtener alertas filtradas", "details", e.getMessage()));
     }
+}
+
 
     @Override
     public List<String> obtenerGruposDesdeCmd() throws IOException 
@@ -425,6 +411,9 @@ public class AlertasServiceImpl implements AlertasService
     public ResponseEntity<?> marcarAlertaComoLeida(AlertMarcarLeidaDTO dto) 
     {
 
+        //llamar a logica para agregar columnas de alertas a columnas visibles por alerta
+        alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
+
         // 1. Validar que el ID de la alerta no sea nulo
         if (dto.getIdAlerta() == null || dto.getIdAlerta() <= 0) 
         {
@@ -519,6 +508,9 @@ public class AlertasServiceImpl implements AlertasService
     public ResponseEntity<?> reportAlerts() 
     {
 
+        //llamar a logica para agregar columnas de alertas a columnas visibles por alerta
+        alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
+
         try 
         {
             Map<String, Object> report = new HashMap<>();
@@ -591,6 +583,9 @@ public class AlertasServiceImpl implements AlertasService
 
     public List<Map<String, Object>> getAlertasLeidas()
     {
+
+        //llamar a logica para agregar columnas de alertas a columnas visibles por alerta
+        alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
 
         try 
         {
@@ -922,6 +917,9 @@ public class AlertasServiceImpl implements AlertasService
     @Override
     public ResponseEntity<?> filtrarDinamico(Map<String, Object> filtros) 
     {
+        //llamar a logica para agregar columnas de alertas a columnas visibles por alerta
+        alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
+
         try 
         {
 
@@ -1120,6 +1118,7 @@ List<AlertasModel> leidasConIcono = alertasLeidas.stream()
     @Override
     public ResponseEntity<?> getAlertasActivas() 
     {
+
         try 
         {
             List<String> gruposCoincidentesParaBuscar =  obtenerGruposCoincidentesConAlertas();
@@ -1230,6 +1229,8 @@ List<AlertasModel> leidasConIcono = alertasLeidas.stream()
     @Override
     public ResponseEntity<?> getTipos()
     {
+        //llamar a logica para agregar columnas de alertas a columnas visibles por alerta
+        alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
         try
         {
             List<String> gruposCoincidentesParaBuscar =  obtenerGruposCoincidentesConAlertas();
@@ -1297,6 +1298,10 @@ List<AlertasModel> leidasConIcono = alertasLeidas.stream()
 
     @Override
     public ResponseEntity<?> reportAlertsDynamic(AlertReportDTO dto) {
+
+        //llamar a logica para agregar columnas de alertas a columnas visibles por alerta
+        alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
+
         try {
             if (dto.getAlertas() == null) 
             {
@@ -1432,6 +1437,26 @@ List<AlertasModel> leidasConIcono = alertasLeidas.stream()
         return contador;
     }
 
+
+    private String transformarNombreColumnaBdToAtributoModel(String col) 
+    {
+        StringBuilder result = new StringBuilder();
+        boolean upper = false;
+
+        for (char c : col.toCharArray()) 
+        {
+            if (c == '_') 
+            {
+                upper = true;
+            } 
+            else 
+            {
+                result.append(upper ? Character.toUpperCase(c) : c);
+                upper = false;
+            }
+        }
+        return result.toString();
+    }
 
 
 

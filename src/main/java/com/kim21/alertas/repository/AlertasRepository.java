@@ -3,6 +3,7 @@ package com.kim21.alertas.repository;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -201,5 +202,14 @@ public interface AlertasRepository extends JpaRepository<AlertasModel, Integer>
     @Query("SELECT DISTINCT a.tiempoReconocimiento FROM AlertasModel a WHERE a.grupoLocal IN :grupoLocal AND a.tiempoReconocimiento IS NOT NULL")
     List<Long> findDistinctTiempoReconocimientoByGrupoLocal(@Param("grupoLocal") List<String> grupoLocal);
 
+        @Query(value = """
+        SELECT COLUMN_NAME 
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'alertas'
+        """, nativeQuery = true)
+    List<String> obtenerColumnasDeAlertas();
 
+
+    @Query(value = "SELECT * FROM alertas WHERE alertaid = :id", nativeQuery = true)
+    Map<String, Object> findRawAlertById(@Param("id") Integer id);
 }

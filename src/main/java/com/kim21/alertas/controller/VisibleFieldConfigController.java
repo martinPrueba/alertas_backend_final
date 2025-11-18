@@ -7,6 +7,8 @@ import org.springframework.web.bind.annotation.*;
 
 import com.kim21.alertas.model.VisibleFieldConfigModel;
 import com.kim21.alertas.repository.VisibleFieldConfigRepository;
+import com.kim21.alertas.util.AlertasUtils;
+
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -18,10 +20,13 @@ public class VisibleFieldConfigController
     @Autowired
     private VisibleFieldConfigRepository repository;
 
+    @Autowired
+    private AlertasUtils alertasUtils;
 
     @GetMapping("/get-all")
     public ResponseEntity<?> getAllVisibleFields() 
     {
+        alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
         try 
         {
             TreeMap<String,Boolean> map = new TreeMap<>();
@@ -50,6 +55,8 @@ public class VisibleFieldConfigController
     @PutMapping("/update-all")
     public ResponseEntity<?> updateAll(@RequestBody List<VisibleFieldConfigModel> fields) 
     {
+        alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
+
         try 
         {
             for (VisibleFieldConfigModel field : fields) 
