@@ -27,6 +27,8 @@ public class VisibleFieldConfigController
     public ResponseEntity<?> getAllVisibleFields() 
     {
         alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
+
+        System.out.println("ESTAMOS PASANDO Y DEBERIA HABERLA INSERTADO.............");
         try 
         {
             TreeMap<String,Boolean> map = new TreeMap<>();
