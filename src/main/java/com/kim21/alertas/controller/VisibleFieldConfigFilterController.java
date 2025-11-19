@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.kim21.alertas.model.VisibleFieldConfigFilterModel;
 import com.kim21.alertas.model.VisibleFieldConfigModel;
 import com.kim21.alertas.service.VisibleFieldConfigFilterService;
+import com.kim21.alertas.util.AlertasUtils;
 
 @RestController
 @RequestMapping("/api/visible-fields-filter")
@@ -24,16 +25,19 @@ public class VisibleFieldConfigFilterController
 {
     private final VisibleFieldConfigFilterService service;
 
-    public VisibleFieldConfigFilterController(VisibleFieldConfigFilterService service) 
+    private final AlertasUtils alertasUtils;
+
+    public VisibleFieldConfigFilterController(VisibleFieldConfigFilterService service,AlertasUtils alertasUtils) 
     {
         this.service = service;
+        this.alertasUtils = alertasUtils;
     }
 
     @GetMapping("get-all")
     public ResponseEntity<?> getAll() {
+        alertasUtils.sincronizarCamposVisiblesDeAlertasFilterACamposVisibles();
         return service.findAll();
     }
-
     
     @PutMapping("/update-all")
     public ResponseEntity<?> updateAll(@RequestBody List<VisibleFieldConfigFilterModel> fields) 

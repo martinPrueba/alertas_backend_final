@@ -7,6 +7,7 @@ import java.io.InputStreamReader;
 import java.lang.reflect.Method;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -82,7 +83,12 @@ public class AlertasServiceImpl implements AlertasService
 
     @Autowired
     private AlertasUtils alertasUtils;
-    
+
+    private static final DateTimeFormatter SOLO_FECHA = DateTimeFormatter.ofPattern("dd-MM-yyyy");
+
+
+    private static final DateTimeFormatter FECHA_HORA_SERVIDOR = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSSS");
+
     // ALERTAS
     @Override
     public ResponseEntity<?> findAllAlertas() 
@@ -90,6 +96,7 @@ public class AlertasServiceImpl implements AlertasService
 
         //llamar a logica para agregar columnas de alertas a columnas visibles por alerta
         alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
+        alertasUtils.sincronizarCamposVisiblesDeAlertasFilterACamposVisibles();
         try 
         {
             List<String> gruposCoincidentesParaBuscar =  obtenerGruposCoincidentesConAlertas();
@@ -211,10 +218,10 @@ public ResponseEntity<?> findAlertaById(Integer id)
         {
             Object valor = rawAlerta.get(campo); // ← AHORA SÍ EXISTE EL VALOR REAL
 
-            // Formateo especial de fechas (igual que antes)
-            if ("fecha_reconocimiento".equalsIgnoreCase(campo) && valor != null) {
-                OffsetDateTime fecha = OffsetDateTime.parse(valor.toString());
-                valor = fecha.format(FORMATTER);
+            if ("fecha_reconocimiento".equalsIgnoreCase(campo) && valor != null) 
+            {
+                LocalDateTime fecha = LocalDateTime.parse(valor.toString(), FECHA_HORA_SERVIDOR);
+                valor = fecha.format(SOLO_FECHA); // Solo día-mes-año
             }
 
             if ("tiempo_reconocimiento".equalsIgnoreCase(campo) && valor != null) {
@@ -255,6 +262,7 @@ public ResponseEntity<?> findAlertaById(Integer id)
     } 
     catch (Exception e) 
     {
+        e.printStackTrace();
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
             .body(Map.of("error", "Error al obtener alertas filtradas", "details", e.getMessage()));
     }
@@ -413,6 +421,7 @@ public ResponseEntity<?> findAlertaById(Integer id)
 
         //llamar a logica para agregar columnas de alertas a columnas visibles por alerta
         alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
+        alertasUtils.sincronizarCamposVisiblesDeAlertasFilterACamposVisibles();
 
         // 1. Validar que el ID de la alerta no sea nulo
         if (dto.getIdAlerta() == null || dto.getIdAlerta() <= 0) 
@@ -479,6 +488,8 @@ public ResponseEntity<?> findAlertaById(Integer id)
             alerta.setUserid(usuario);
             alerta.setComentario(dto.getComentario());
             alerta.setValida(dto.isValida());
+            alerta.setEstado(dto.isValida() ? "Valida" : "Rechazada");
+
             alerta.setFechaReconocimiento(fechaReconocimiento);
             if(tiempoReconocimiento != null)
             {
@@ -586,6 +597,7 @@ public ResponseEntity<?> findAlertaById(Integer id)
 
         //llamar a logica para agregar columnas de alertas a columnas visibles por alerta
         alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
+        alertasUtils.sincronizarCamposVisiblesDeAlertasFilterACamposVisibles();
 
         try 
         {
@@ -919,6 +931,7 @@ public ResponseEntity<?> findAlertaById(Integer id)
     {
         //llamar a logica para agregar columnas de alertas a columnas visibles por alerta
         alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
+        alertasUtils.sincronizarCamposVisiblesDeAlertasFilterACamposVisibles();
 
         try 
         {
@@ -939,41 +952,41 @@ public ResponseEntity<?> findAlertaById(Integer id)
         boolean tieneInicio = fechaInicioObj != null && !fechaInicioObj.toString().isBlank();
         boolean tieneFin = fechaFinObj != null && !fechaFinObj.toString().isBlank();
 
-        if (tieneInicio || tieneFin) 
-        {
-            try 
-            {
-                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+if (tieneInicio || tieneFin) {
+    try {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-                // Si se envían, las parseamos a LocalDate
-                LocalDate fechaInicio = tieneInicio ? LocalDate.parse(fechaInicioObj.toString(), formatter) : null;
-                LocalDate fechaFin = tieneFin ? LocalDate.parse(fechaFinObj.toString(), formatter) : null;
+        LocalDate fechaInicio = tieneInicio ? LocalDate.parse(fechaInicioObj.toString(), formatter) : null;
+        LocalDate fechaFin = tieneFin ? LocalDate.parse(fechaFinObj.toString(), formatter) : null;
 
-                // Convertimos LocalDate → OffsetDateTime (a medianoche local)
-                ZoneOffset offsetChile = ZoneOffset.of("-03:00");
-                Expression<LocalDate> fechaSoloDia = root.get("inicioevento").as(LocalDate.class);
+        ZoneOffset offset = ZoneOffset.of("-03:00");
 
-                if (fechaInicio != null && fechaFin != null) {
-                    predicates.add(cb.between(fechaSoloDia, fechaInicio, fechaFin));
-                } 
-                else if (fechaInicio != null) {
-                    predicates.add(cb.greaterThanOrEqualTo(fechaSoloDia, fechaInicio));
-                } 
-                else {
-                    predicates.add(cb.lessThanOrEqualTo(fechaSoloDia, fechaFin));
-                }
+        OffsetDateTime inicioDelDia = fechaInicio != null
+            ? fechaInicio.atStartOfDay().atOffset(offset)
+            : null;
 
+        OffsetDateTime finDelDia = fechaFin != null
+            ? fechaFin.atTime(23, 59, 59).atOffset(offset)
+            : null;
 
+        Path<OffsetDateTime> campoFecha = root.get("inicioevento");
 
-            } 
-            catch (Exception e) 
-            {
-                return ResponseEntity.badRequest().body(Map.of(
-                    "error", "Formato de fecha inválido",
-                    "detalle", "Usa formato: 2025-10-04 (solo día/mes/año)"
-                ));
-            }
+        if (inicioDelDia != null && finDelDia != null) {
+            predicates.add(cb.between(campoFecha, inicioDelDia, finDelDia));
+        } else if (inicioDelDia != null) {
+            predicates.add(cb.greaterThanOrEqualTo(campoFecha, inicioDelDia));
+        } else {
+            predicates.add(cb.lessThanOrEqualTo(campoFecha, finDelDia));
         }
+
+    } catch (Exception e) {
+        return ResponseEntity.badRequest().body(Map.of(
+            "error", "Formato de fecha inválido",
+            "detalle", "Usa formato: 2025-10-04 (solo día/mes/año)"
+        ));
+    }
+}
+
 
 
 filtros.forEach((campo, valor) -> {
@@ -988,6 +1001,13 @@ filtros.forEach((campo, valor) -> {
 
     try {
         Path<Object> path = root.get(campo);
+
+
+        if (campo.equalsIgnoreCase("valida")) {
+    predicates.add(cb.equal(root.get("valida"), Boolean.valueOf(valor.toString())));
+    return;
+}
+
 
         if (valor instanceof String) {
             predicates.add(cb.like(cb.lower(path.as(String.class)),
