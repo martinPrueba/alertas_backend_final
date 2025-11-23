@@ -11,4 +11,5 @@ public class ProcessAssociateIconDTO
 {
     private String proceso;
     private String iconUrl;
+    private String grupoLocal;
 }

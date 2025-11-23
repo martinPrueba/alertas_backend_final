@@ -14,6 +14,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -89,6 +90,7 @@ public class AlertasServiceImpl implements AlertasService
 
     private static final DateTimeFormatter FECHA_HORA_SERVIDOR = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSSS");
 
+
     // ALERTAS
     @Override
     public ResponseEntity<?> findAllAlertas() 
@@ -149,7 +151,7 @@ public class AlertasServiceImpl implements AlertasService
 
 
                 //agregamos campo de iconAssocieteFromProceso en ProcessAssociateIconModel
-                Optional<ProcessAssociateIconModel> findIconUrl = processAssociateIconRepository.findByProceso(alerta.getProceso());
+                Optional<ProcessAssociateIconModel> findIconUrl = processAssociateIconRepository.findByProcesoAndGrupoLocal(alerta.getProceso(),alerta.getGrupoLocal());
 
                 if(!findIconUrl.isPresent())
                 {
@@ -189,12 +191,10 @@ public class AlertasServiceImpl implements AlertasService
 @Override
 public ResponseEntity<?> findAlertaById(Integer id) 
 {
-    // Sincronizar campos nuevos
     alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
 
     try 
     {
-        // 1️⃣ Obtener los valores REALES desde SQL Server (incluye columnas nuevas)
         Map<String, Object> rawAlerta = alertasRepository.findRawAlertById(id);
 
         if (rawAlerta == null) {
@@ -202,26 +202,27 @@ public ResponseEntity<?> findAlertaById(Integer id)
                 .body(Map.of("error", "No existe alerta con ese ID"));
         }
 
-        // 2️⃣ Obtener campos visibles
+        // Obtener campos visibles
         List<String> camposVisibles = visibleFieldConfigRepository.findAll()
             .stream()
             .filter(VisibleFieldConfigModel::getVisible)
             .map(VisibleFieldConfigModel::getFieldName)
             .toList();
 
-        // 3️⃣ Aquí guardaremos la alerta visible
-        List<Map<String, Object>> alertasVisiblesNormales = new ArrayList<>();
+        // Ordenar alfabéticamente
+        camposVisibles = new ArrayList<>(camposVisibles);
+        camposVisibles.sort(String.CASE_INSENSITIVE_ORDER);
 
-        Map<String, Object> visibleData = new HashMap<>();
+        // ⚠️ USAR LinkedHashMap para mantener el ORDEN
+        LinkedHashMap<String, Object> visibleData = new LinkedHashMap<>();
 
         for (String campo : camposVisibles) 
         {
-            Object valor = rawAlerta.get(campo); // ← AHORA SÍ EXISTE EL VALOR REAL
+            Object valor = rawAlerta.get(campo);
 
-            if ("fecha_reconocimiento".equalsIgnoreCase(campo) && valor != null) 
-            {
+            if ("fecha_reconocimiento".equalsIgnoreCase(campo) && valor != null) {
                 LocalDateTime fecha = LocalDateTime.parse(valor.toString(), FECHA_HORA_SERVIDOR);
-                valor = fecha.format(SOLO_FECHA); // Solo día-mes-año
+                valor = fecha.format(SOLO_FECHA);
             }
 
             if ("tiempo_reconocimiento".equalsIgnoreCase(campo) && valor != null) {
@@ -231,33 +232,23 @@ public ResponseEntity<?> findAlertaById(Integer id)
             visibleData.put(campo, valor);
         }
 
-        // 4️⃣ Icono asociado al proceso
+        // Icono asociado al proceso
         String proceso = rawAlerta.get("proceso") != null ? rawAlerta.get("proceso").toString() : null;
+        Object grupoLocal = rawAlerta.get("grupo_local");
 
-        if (proceso != null) {
-            Optional<ProcessAssociateIconModel> findIconUrl =
-                processAssociateIconRepository.findByProceso(proceso);
+        visibleData.put("IconAssocieteFromProceso",
+            proceso != null
+                ? processAssociateIconRepository.findByProcesoAndGrupoLocal(proceso,grupoLocal.toString())
+                    .map(ProcessAssociateIconModel::getIconUrl)
+                    .orElse("No existe un icono asociado al proceso.")
+                : "Proceso no informado"
+        );
 
-            visibleData.put(
-                "IconAssocieteFromProceso",
-                findIconUrl.map(ProcessAssociateIconModel::getIconUrl)
-                           .orElse("No existe un icono asociado al proceso.")
-            );
-        } else {
-            visibleData.put("IconAssocieteFromProceso", "Proceso no informado");
-        }
-
-        // Agregar alerta a la lista
-        alertasVisiblesNormales.add(visibleData);
-
-        // 5️⃣ Mantener EXACTA la estructura original de retorno
+        // Preparar estructura original
         Map<String, Object> response = new HashMap<>();
-        response.put("alertas", alertasVisiblesNormales);
+        response.put("alertas", List.of(visibleData));
 
-        List<Object> resultado = new ArrayList<>();
-        resultado.add(response);
-
-        return ResponseEntity.ok(resultado);
+        return ResponseEntity.ok(List.of(response));
 
     } 
     catch (Exception e) 
@@ -267,6 +258,7 @@ public ResponseEntity<?> findAlertaById(Integer id)
             .body(Map.of("error", "Error al obtener alertas filtradas", "details", e.getMessage()));
     }
 }
+
 
 
     @Override
@@ -349,71 +341,6 @@ public ResponseEntity<?> findAlertaById(Integer id)
                 .collect(Collectors.toList());
     }
 
-    @Override
-    public ResponseEntity<?> getAlertsByProcesoAndGrupoLocalAndInitAndEndDate(String proceso,String activo, OffsetDateTime initDate,OffsetDateTime endDate)
-    {
-
-    // 1) Ambas fechas son obligatorias
-    if (initDate == null || endDate == null) 
-    {
-        return ResponseEntity
-            .badRequest()
-            .body(Map.of("message", "Debes enviar ambas fechas: fecha inicio y fecha fin."));
-    }
-
-    // 2) Coherencia de rango
-    if (endDate.isBefore(initDate)) 
-    {
-        return ResponseEntity
-            .badRequest()
-            .body(Map.of("message", "La fecha fin no puede ser anterior a la inicial."));
-    }
-
-
-        try 
-        {
-            List<String> gruposCoincidentesParaBuscar =  obtenerGruposCoincidentesConAlertas();
-            if(gruposCoincidentesParaBuscar.isEmpty())
-            {
-                return ResponseEntity.status(404).body(Map.of("message","No existen grupos asociados al usuario en las alertas."));
-            }   
-
-            List<Map<String, Object>> alertasLeidas = getAlertasLeidasByFilter(proceso,
-                activo,
-                gruposCoincidentesParaBuscar,
-                initDate,
-                endDate
-            );
-
-
-            //crear map para almacenar alertas y alertasLeidas
-            Map<String,Object> mapGeneral = new HashMap<>();
-
-            mapGeneral.put("alertasLeidas", alertasLeidas);
-
-            //obtener grupos locales que puede tener el usuario
-            List<Map<String, Object>> alertas = getAlertasByFilter(
-                proceso,
-                activo,
-                gruposCoincidentesParaBuscar,
-                initDate,
-                endDate
-            );
-
-
-            
-            //logica para filtrar alertas no leidas
-            mapGeneral.put("alertas", alertas);
-
-            return ResponseEntity.ok(mapGeneral);
-
-        } 
-        catch (Exception e)
-        {
-            e.printStackTrace();
-            return ResponseEntity.status(500).body(Map.of("message","Ha ocurrido un error interno."));
-        }
-    }
 
     @Override
     public ResponseEntity<?> marcarAlertaComoLeida(AlertMarcarLeidaDTO dto) 
@@ -526,58 +453,64 @@ public ResponseEntity<?> findAlertaById(Integer id)
         {
             Map<String, Object> report = new HashMap<>();
 
-            // 1. Cantidad de alertas activas (no leídas)
-            Long cantidadActivas = alertasRepository.countAlertasActivas();
-            report.put("cantidadActivas", cantidadActivas);
 
-            // 2. Cantidad por proceso
-            List<Object[]> porProceso = alertasRepository.countAlertasPorProceso();
-            Map<String, Long> procesoMap = new HashMap<>();
-            for (Object[] row : porProceso) 
-            {
-                String proceso = (String) row[0];
-                if(proceso == null )
+
+
+                // 1. Cantidad de alertas activas (no leídas)
+                Long cantidadActivas = alertasRepository.countAlertasActivasByGrupoLocal(obtenerGruposCoincidentesConAlertas());
+                report.put("cantidadActivas", cantidadActivas);
+
+                // 2. Cantidad por proceso
+                List<Object[]> porProceso = alertasRepository.countAlertasPorProcesoByGrupoLocal(obtenerGruposCoincidentesConAlertas());
+                Map<String, Long> procesoMap = new HashMap<>();
+                for (Object[] row : porProceso) 
                 {
-                    proceso = "NULO";
+                    String proceso = (String) row[0];
+                    if(proceso == null )
+                    {
+                        proceso = "NULO";
+                    }
+                    
+                    Long total = (Long) row[1];
+                    procesoMap.put(proceso, total);
+                }
+                report.put("alertasPorProceso", procesoMap);
+
+                // 3. Cantidad por servicio
+                List<Object[]> porServicio = alertasRepository.countAlertasPorServicioByGrupoLocal(obtenerGruposCoincidentesConAlertas());
+                Map<String, Long> servicioMap = new HashMap<>();
+                for (Object[] row : porServicio) 
+                {
+                    String servicio = (String) row[0];
+                    if(servicio == null )
+                    {
+                        servicio = "NULO";
+                    }
+
+                    Long total = (Long) row[1];
+                    servicioMap.put(servicio, total);
+                }
+                report.put("alertasPorTipoServicio", servicioMap);
+
+                // 4. Cantidad por criticidad (severidad)
+                List<Object[]> porCriticidad = alertasRepository.countAlertasPorCriticidadByGrupoLocal(obtenerGruposCoincidentesConAlertas());
+                Map<String, Long> criticidadMap = new HashMap<>();
+                for (Object[] row : porCriticidad) 
+                {
+                    String criticidad = (String) row[0];
+                    if(criticidad == null )
+                    {
+                        criticidad = "NULO";
+                    }
+
+                    Long total = (Long) row[1];
+                    criticidadMap.put(criticidad, total);
                 }
                 
-                Long total = (Long) row[1];
-                procesoMap.put(proceso, total);
-            }
-            report.put("alertasPorProceso", procesoMap);
+                report.put("alertasPorCriticidad", criticidadMap);
 
-            // 3. Cantidad por servicio
-            List<Object[]> porServicio = alertasRepository.countAlertasPorServicio();
-            Map<String, Long> servicioMap = new HashMap<>();
-            for (Object[] row : porServicio) 
-            {
-                String servicio = (String) row[0];
-                if(servicio == null )
-                {
-                    servicio = "NULO";
-                }
 
-                Long total = (Long) row[1];
-                servicioMap.put(servicio, total);
-            }
-            report.put("alertasPorTipoServicio", servicioMap);
-
-            // 4. Cantidad por criticidad (severidad)
-            List<Object[]> porCriticidad = alertasRepository.countAlertasPorCriticidad();
-            Map<String, Long> criticidadMap = new HashMap<>();
-            for (Object[] row : porCriticidad) 
-            {
-                String criticidad = (String) row[0];
-                if(criticidad == null )
-                {
-                    criticidad = "NULO";
-                }
-
-                Long total = (Long) row[1];
-                criticidadMap.put(criticidad, total);
-            }
             
-            report.put("alertasPorCriticidad", criticidadMap);
 
             return ResponseEntity.ok(report);
 
@@ -754,7 +687,7 @@ public ResponseEntity<?> findAlertaById(Integer id)
 
 
                 //agregamos campo de iconAssocieteFromProceso en ProcessAssociateIconModel
-                Optional<ProcessAssociateIconModel> findIconUrl = processAssociateIconRepository.findByProceso(alerta.getProceso());
+                Optional<ProcessAssociateIconModel> findIconUrl = processAssociateIconRepository.findByProcesoAndGrupoLocal(alerta.getProceso(),alerta.getGrupoLocal());
                 if(!findIconUrl.isPresent())
                 {
                     visibleData.put("IconAssocieteFromProceso", "No existe un icono asociado al proceso.");
@@ -995,18 +928,27 @@ filtros.forEach((campo, valor) -> {
     }
 
     // ignoramos los que ya manejamos
-    if (campo.equalsIgnoreCase("fechaInicio") || campo.equalsIgnoreCase("fechaFin")) {
+    if (campo.equalsIgnoreCase("fechaInicio") || campo.equalsIgnoreCase("fechaFin")) 
+    {
         return;
     }
+
+    if (campo.equalsIgnoreCase("grupoLocal")) 
+    {
+        predicates.add(cb.equal(root.get("grupoLocal"), valor.toString()));
+        return;
+    }
+
 
     try {
         Path<Object> path = root.get(campo);
 
 
-        if (campo.equalsIgnoreCase("valida")) {
-    predicates.add(cb.equal(root.get("valida"), Boolean.valueOf(valor.toString())));
-    return;
-}
+        if (campo.equalsIgnoreCase("valida")) 
+        {
+            predicates.add(cb.equal(root.get("valida"), Boolean.valueOf(valor.toString())));
+            return;
+        }
 
 
         if (valor instanceof String) {
@@ -1246,81 +1188,77 @@ List<AlertasModel> leidasConIcono = alertasLeidas.stream()
 
 
 
-    @Override
-    public ResponseEntity<?> getTipos()
+    public List<Object> getDistinctValuesDynamic(String columnName, List<String> grupos) 
     {
-        //llamar a logica para agregar columnas de alertas a columnas visibles por alerta
+        String sql = "SELECT DISTINCT " + columnName +
+                    " FROM alertas WHERE grupo_local IN :grupos AND " + columnName + " IS NOT NULL";
+
+            return entityManager.createNativeQuery(sql)
+                    .setParameter("grupos", grupos)
+                    .getResultList();
+    }
+
+
+    @Override
+    public ResponseEntity<?> getTipos() 
+    {
+
         alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
-        try
+
+        try 
         {
-            List<String> gruposCoincidentesParaBuscar =  obtenerGruposCoincidentesConAlertas();
-            if(gruposCoincidentesParaBuscar.isEmpty())
+            List<String> grupos = obtenerGruposCoincidentesConAlertas();
+            if (grupos.isEmpty()) 
             {
-                return ResponseEntity.status(404).body(Map.of("message","No existen grupos asociados al usuario."));
+                return ResponseEntity.status(404)
+                    .body(Map.of("message", "No existen grupos asociados al usuario."));
             }
 
+            // 🔹 Obtener columnas reales de la BD
+            List<String> columnas = alertasRepository.obtenerColumnasDeAlertas();
+
             Map<String, Object> tipos = new HashMap<>();
-            tipos.put("procesos", alertasRepository.findDistinctProcesosByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("nombreActivo", alertasRepository.findAllDistintActivosAndGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("codalerta", alertasRepository.findDistinctCodalertaByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("nombre", alertasRepository.findDistinctNombreByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("sentenciaId", alertasRepository.findDistinctSentenciaIdByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("identificacionalerta", alertasRepository.findDistinctIdentificacionAlertaByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("latencia", alertasRepository.findDistinctLatenciaByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("tipoServicio", alertasRepository.findDistinctTipoServicioByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("CI", alertasRepository.findDistinctCiByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("Subtiposervicio", alertasRepository.findDistinctSubtipoServicioByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("jitter", alertasRepository.findDistinctJitterByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("disponibilidad", alertasRepository.findDistinctDisponibilidadByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("packetlost", alertasRepository.findDistinctPacketLostByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("rssi", alertasRepository.findDistinctRssiByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("nsr", alertasRepository.findDistinctNsrByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("PLM", alertasRepository.findDistinctPlmByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("tipoExWa", alertasRepository.findDistinctTipoExWaByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("codigoEvento", alertasRepository.findDistinctCodigoEventoByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("descripcionevento", alertasRepository.findDistinctDescripcionEventoByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("Origen", alertasRepository.findDistinctOrigenByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("tipodocumento", alertasRepository.findDistinctTipoDocumentoByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("estado", alertasRepository.findDistinctEstadoByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("resumen", alertasRepository.findDistinctResumenByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("titulo", alertasRepository.findDistinctTituloByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("numero", alertasRepository.findDistinctNumeroByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("razonestado", alertasRepository.findDistinctRazonEstadoByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("gpsx", alertasRepository.findDistinctGpsxByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("gpsy", alertasRepository.findDistinctGpsyByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("gpsz", alertasRepository.findDistinctGpszByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("gpsh", alertasRepository.findDistinctGpshByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("radio", alertasRepository.findDistinctRadioByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("severidad", alertasRepository.findDistinctSeveridadByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("comentario", alertasRepository.findDistinctComentarioByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("OT", alertasRepository.findDistinctOtByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("ticket", alertasRepository.findDistinctTicketByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("prediccion", alertasRepository.findDistinctPrediccionByGrupoLocal(gruposCoincidentesParaBuscar));
-            tipos.put("tiempoReconocimiento", alertasRepository.findDistinctTiempoReconocimientoByGrupoLocal(gruposCoincidentesParaBuscar));
 
-            boolean existenValores = tipos.values().stream()
-                    .filter(Objects::nonNull)
-                    .anyMatch(valor -> valor instanceof List<?> && !((List<?>) valor).isEmpty());
-
-            if(!existenValores)
+            // 🔥 Por cada columna obtenemos sus valores distintos
+            for (String columna : columnas) 
             {
-                return ResponseEntity.status(404).body(Map.of("message","No existen tipos asociados al usuario."));
+                try 
+                {
+                    List<Object> valores = getDistinctValuesDynamic(columna, grupos);
+
+                    // Si tiene valores, lo añadimos
+                    if (valores != null && !valores.isEmpty()) 
+                    {
+                        tipos.put(columna, valores);
+                    }
+
+                } 
+                catch (Exception e) 
+                {
+                    System.out.println("⚠ Error obteniendo tipo para columna: " + columna);
+                }
+            }
+
+            if (tipos.isEmpty()) 
+            {
+                return ResponseEntity.status(404).body(Map.of("message", "No existen tipos asociados."));
             }
 
             return ResponseEntity.ok(tipos);
-        }
-        catch (Exception e)
-        {
+
+        } catch (Exception e) {
             e.printStackTrace();
-            return ResponseEntity.status(404).body(Map.of("error","Ha ocurrido un error interno"));
+            return ResponseEntity.status(500).body(Map.of("error", "Error interno"));
         }
     }
+
 
     @Override
     public ResponseEntity<?> reportAlertsDynamic(AlertReportDTO dto) {
 
         //llamar a logica para agregar columnas de alertas a columnas visibles por alerta
         alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
+
 
         try {
             if (dto.getAlertas() == null) 
@@ -1476,6 +1414,21 @@ List<AlertasModel> leidasConIcono = alertasLeidas.stream()
             }
         }
         return result.toString();
+    }
+
+    @Override
+    public ResponseEntity<?> getAllUserGruposLocales() 
+    {
+        try 
+        {
+            List<String> gruposCoincidentesParaBuscar =  obtenerGruposCoincidentesConAlertas();
+            return ResponseEntity.ok(gruposCoincidentesParaBuscar);
+        } 
+        catch (Exception e) 
+        {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Error al obtener grupos de usuario", "details", e.getMessage()));
+        }
+
     }
 
 

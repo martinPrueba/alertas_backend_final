@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import com.kim21.alertas.model.VisibleFieldConfigModel;
+import com.kim21.alertas.repository.AlertasRepository;
 import com.kim21.alertas.repository.VisibleFieldConfigRepository;
 import com.kim21.alertas.util.AlertasUtils;
 
@@ -23,23 +24,37 @@ public class VisibleFieldConfigController
     @Autowired
     private AlertasUtils alertasUtils;
 
+    @Autowired
+    private AlertasRepository alertasRepository;
+
     @GetMapping("/get-all")
     public ResponseEntity<?> getAllVisibleFields() 
     {
         alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
 
-        System.out.println("ESTAMOS PASANDO Y DEBERIA HABERLA INSERTADO.............");
         try 
         {
             TreeMap<String,Boolean> map = new TreeMap<>();
 
             for (VisibleFieldConfigModel visibleField : repository.findAll()) 
             {
+                //verificar que los el visibleField tiene que existir en la columna de alertas
                 if(!visibleField.getFieldName().equals("alertaid") && !visibleField.getFieldName().equals("gpsx") && !visibleField.getFieldName().equals("gpsy") && !visibleField.getFieldName().equals("valida") && !visibleField.getFieldName().equals("gpsy") && !visibleField.getFieldName().equals("userid"))
-                {
+                {                    
                     if(visibleField.getFieldName() != null)
                     {
-                        map.put(visibleField.getFieldName(), visibleField.getVisible());
+                            // 1️⃣ Obtener columnas reales normalizadas
+                        List<String> columnasReales = alertasRepository.obtenerColumnasDeAlertas()
+                                .stream()
+                                .map(c -> c.trim().toLowerCase())
+                                .toList();
+
+                        if(columnasReales.contains(visibleField.getFieldName()))
+                        {
+                            map.put(visibleField.getFieldName(), visibleField.getVisible());
+
+                        }
+
                     }
                 }
             }

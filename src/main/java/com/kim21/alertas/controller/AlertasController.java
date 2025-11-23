@@ -13,6 +13,9 @@ import java.util.Map;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+
 
 
 @RestController
@@ -37,16 +40,6 @@ public class AlertasController
         return alertasService.findAlertaById(id);
     }
 
-    @GetMapping("/filter")
-    public ResponseEntity<?> getAlertsByProcesoAndGrupoLocalAndInitAndEndDate(
-            @RequestParam (required = false) String proceso,
-            @RequestParam (required = false) String activo,
-            @RequestParam (required = false) OffsetDateTime initDate,
-            @RequestParam (required = false) OffsetDateTime endDate
-    ) 
-    {
-        return alertasService.getAlertsByProcesoAndGrupoLocalAndInitAndEndDate(proceso,activo, initDate, endDate);
-    }
 
 
     @PostMapping("/filter-dynamic")
@@ -112,5 +105,13 @@ public class AlertasController
     {
         return alertasService.reportAlertsDynamic(dto);
     }
+
+
+    @GetMapping("/getall-usergrupos-locales")
+    public ResponseEntity<?> getAllUserGruposLocales() 
+    {
+        return alertasService.getAllUserGruposLocales();
+    }
+    
 
 }

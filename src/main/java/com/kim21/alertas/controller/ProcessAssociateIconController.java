@@ -54,4 +54,11 @@ public class ProcessAssociateIconController
             return ResponseEntity.status(500).body("Error al obtener procesos: " + e.getMessage());
         }
     }
+
+    @DeleteMapping("/delete/{id}")
+    public ResponseEntity<?> deleteById(@PathVariable Integer id) 
+    {
+        return processAssociateIconService.deleteProcessIconById(id);
+    }
+
 }

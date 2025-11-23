@@ -32,69 +32,81 @@ public class AlertasUtils
      * que existen en AlertasModel pero no están registrados.
      */
 
-     public void sincronizarCamposVisiblesDeAlertasACamposVisibles() 
+public void sincronizarCamposVisiblesDeAlertasACamposVisibles() 
+{
+    // 1️⃣ Obtener columnas reales normalizadas
+    List<String> columnasReales = alertasRepository.obtenerColumnasDeAlertas()
+            .stream()
+            .map(c -> c.trim().toLowerCase())
+            .toList();
+
+    // 2️⃣ Obtener columnas existentes normalizadas
+    List<String> camposExistentes = visibleFieldConfigRepository.findAll()
+            .stream()
+            .map(v -> v.getFieldName().trim().toLowerCase())
+            .toList();
+
+    // 3️⃣ Insertar solo las que no existen
+    for (String columna : columnasReales) 
     {
-        //System.out.println("🔄 Sincronizando columnas...");
-
-        // 1️⃣ Obtener columnas reales desde la BD
-        List<String> columnasReales = alertasRepository.obtenerColumnasDeAlertas();
-        //System.out.println("📌 Columnas reales en BD: " + columnasReales);
-
-        // 2️⃣ Obtener columnas configuradas en visible_fields
-        List<String> camposExistentes = visibleFieldConfigRepository.findAll()
-                .stream()
-                .map(VisibleFieldConfigModel::getFieldName)
-                .toList();
-
-        //System.out.println("📌 Columnas en configuración: " + camposExistentes);
-
-        // 3️⃣ Comparar y agregar las faltantes
-        for (String columna : columnasReales) 
+        if (!camposExistentes.contains(columna)) 
         {
-            if (!camposExistentes.contains(columna)) 
+            try 
             {
                 VisibleFieldConfigModel nuevoCampo = VisibleFieldConfigModel.builder()
-                        .fieldName(columna)
+                        .fieldName(columna) // siempre normalizado
                         .visible(true)
                         .build();
 
-                //System.out.println("➕ Insertando nueva columna visible: " + columna);
-
                 visibleFieldConfigRepository.save(nuevoCampo);
+            } 
+            catch (Exception e) 
+            {
+                System.err.println("⚠ Error insertando campo visible '" + columna + "': " + e.getMessage());
             }
         }
-
-        //System.out.println("✔ Sincronización completada.");
     }
+}
+
 
 
 public void sincronizarCamposVisiblesDeAlertasFilterACamposVisibles() {
 
-    // 1️⃣ Obtener columnas reales desde BD
-    List<String> columnasReales = alertasRepository.obtenerColumnasDeAlertas();
+    // 1️⃣ Obtener columnas reales normalizadas
+    List<String> columnasReales = alertasRepository.obtenerColumnasDeAlertas()
+            .stream()
+            .map(c -> c.trim().toLowerCase())
+            .toList();
 
-    // 2️⃣ Obtener columnas ya existentes pero en minúsculas
-    List<String> camposExistentes =
-            visibleFieldConfigFilterRepository.findAll()
-                    .stream()
-                    .map(v -> v.getFieldName().toLowerCase())
-                    .toList();
+    // 2️⃣ Obtener columnas ya existentes normalizadas
+    List<String> camposExistentes = visibleFieldConfigFilterRepository.findAll()
+            .stream()
+            .map(v -> v.getFieldName().trim().toLowerCase())
+            .toList();
 
-    // 3️⃣ Comparar normalizando
-    for (String columna : columnasReales) {
+    // 3️⃣ Comparar y agregar nuevas
+    for (String columna : columnasReales) 
+    {
+        if (!camposExistentes.contains(columna)) 
+        {
+            try 
+            {
+                VisibleFieldConfigFilterModel nuevoCampo =
+                        VisibleFieldConfigFilterModel.builder()
+                                .fieldName(columna) // guardar siempre normalizado
+                                .visible(true)
+                                .build();
 
-        if (!camposExistentes.contains(columna.toLowerCase())) {
-
-            VisibleFieldConfigFilterModel nuevoCampo =
-                    VisibleFieldConfigFilterModel.builder()
-                            .fieldName(columna) // se guarda tal como viene
-                            .visible(true)
-                            .build();
-
-            visibleFieldConfigFilterRepository.save(nuevoCampo);
+                visibleFieldConfigFilterRepository.save(nuevoCampo);
+            } 
+            catch (Exception e) 
+            {
+                System.err.println("⚠ Error insertando campo dinámico '" + columna + "': " + e.getMessage());
+            }
         }
     }
 }
+
 
 
 }

@@ -37,9 +37,6 @@ public interface AlertasService {
      * 
      * se obtienen alertas filtradas por procesos y grupolocal y rango de fechas de initDate a endDate, 
      */
-    ResponseEntity<?> getAlertsByProcesoAndGrupoLocalAndInitAndEndDate(String proceso,String activo,OffsetDateTime initDate,OffsetDateTime endDate);
-
-
     ResponseEntity<?> marcarAlertaComoLeida(AlertMarcarLeidaDTO dto);
     ResponseEntity<?> reportAlerts();
     ResponseEntity<?> getProcesos();
@@ -48,6 +45,7 @@ public interface AlertasService {
     ResponseEntity<?> getAlertasActivas();
     ResponseEntity<?> getTipos();
     ResponseEntity<?> reportAlertsDynamic(AlertReportDTO dto);
+    ResponseEntity<?> getAllUserGruposLocales();
 
 
 }

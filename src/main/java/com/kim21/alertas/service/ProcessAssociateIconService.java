@@ -13,4 +13,5 @@ public interface ProcessAssociateIconService
     ResponseEntity<?> createProcessIcon(ProcessAssociateIconDTO dto);
     ResponseEntity<?> updateIconByProceso(ProcessAssociateIconDTO dto);
     ResponseEntity<?> getAllProcesos();
+    ResponseEntity<?> deleteProcessIconById(Integer id);
 }

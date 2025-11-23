@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
@@ -26,6 +27,9 @@ public class ProcessAssociateIconServiceImpl implements ProcessAssociateIconServ
 
     @Autowired
     private AlertasRepository alertasRepository;
+
+    @Autowired
+    private AlertasService alertasService;
 
     @Override
     public ResponseEntity<?> getIconByProceso(String proceso) 
@@ -62,7 +66,9 @@ public class ProcessAssociateIconServiceImpl implements ProcessAssociateIconServ
         {
             // Validación básica
             if (dto.getProceso() == null || dto.getProceso().isBlank() ||
-                dto.getIconUrl() == null || dto.getIconUrl().isBlank()) 
+                dto.getIconUrl() == null || dto.getIconUrl().isBlank() || dto.getGrupoLocal() == null || dto.getGrupoLocal().isBlank()
+                )
+
             {
                 return ResponseEntity.badRequest().body(Map.of("error", "Los campos 'proceso' e 'iconUrl' son obligatorios."));
             }
@@ -77,6 +83,7 @@ public class ProcessAssociateIconServiceImpl implements ProcessAssociateIconServ
             ProcessAssociateIconModel entity = ProcessAssociateIconModel.builder()
                     .proceso(dto.getProceso())
                     .iconUrl(dto.getIconUrl())
+                    .grupoLocal(dto.getGrupoLocal())
                     .build();
 
             // Guardar en BD
@@ -142,46 +149,54 @@ public class ProcessAssociateIconServiceImpl implements ProcessAssociateIconServ
     @Override
     public ResponseEntity<?> getAllProcesos() 
     {
-        List<ProcessAssociateIconModel> listaProcesos= new ArrayList<>(repository.findAll());
-        
-        List<AlertasModel> allAlerts = alertasRepository.findAll();
-
-        Map<String,String> returnMap = new HashMap<>();
-        
-
-        for (ProcessAssociateIconModel processAsocciete : listaProcesos) 
+        //List<ProcessAssociateIconModel> listaProcesos= new ArrayList<>(repository.findAllByGrupoLocal(alertasService.obtenerGruposCoincidentesConAlertas()));
+        try 
         {
-            if(processAsocciete.getProceso() != null)
+            List<ProcessAssociateIconModel> listaProcesos = repository.findAllByGrupoLocalIn(alertasService.obtenerGruposCoincidentesConAlertas());
+
+            List<AlertasModel> allAlerts = alertasRepository.findAll();
+
+            List<ProcessAssociateIconModel> returnList = new ArrayList<>();
+
+
+            //debo agregar el grupo local para poder mostralo en el frontend
+            for (ProcessAssociateIconModel processAsocciete : listaProcesos) 
             {
-                returnMap.put(processAsocciete.getProceso(), processAsocciete.getIconUrl());
-            }
-        }
 
-
-        // ahora debemos verificar los procesos que tengamos en alertas que no existan en returnMap para asociarlos
-
-            for (AlertasModel alertasModel : allAlerts) 
-            {
-                if(alertasModel.getProceso() != null)
+                if(processAsocciete.getProceso() != null && processAsocciete.getGrupoLocal() != null)
                 {
-                    if(!returnMap.containsKey(alertasModel.getProceso()))
-                    {
-                        //verificar si se encuentra en la tabla de ProccessAssocieteIcon para agregarlo
-                        Optional<ProcessAssociateIconModel> verify = repository.findByProceso(alertasModel.getProceso());
-                        if(verify.isEmpty())
-                        {
-                            ProcessAssociateIconModel entity = ProcessAssociateIconModel.builder()
-                                .proceso(alertasModel.getProceso())
-                                .iconUrl("")
-                                .build();
-                            repository.save(entity);
-                        }
-                        returnMap.put(alertasModel.getProceso(), "null");
-                    }
+                    returnList.add(processAsocciete);
                 }
             }
-        
-        return ResponseEntity.ok(returnMap);
+
+            // ahora debemos verificar los procesos que tengamos en alertas que no existan en returnMap para asociarlos            
+            return ResponseEntity.ok(returnList);
+        } 
+        catch (Exception e) 
+        {
+            return ResponseEntity.status(500).body(Map.of("error","Ha ocurrido un error interno"));
+        }
+
+    }
+
+    @Override
+    public ResponseEntity<?> deleteProcessIconById(Integer id) 
+    {
+        if (id == null || id <= 0) 
+                {
+            return ResponseEntity.badRequest().body(Map.of("error", "El ID proporcionado no es válido."));
+        }
+
+        Optional<ProcessAssociateIconModel> iconOpt = repository.findById(id);
+
+        if (iconOpt.isEmpty()) 
+        {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "No existe un icono asociado con el ID indicado."));
+        }
+
+        repository.deleteById(id);
+
+        return ResponseEntity.ok(Map.of("message", "Icono eliminado correctamente.", "idEliminado", id));
     }
     
 }
