@@ -50,7 +50,6 @@ import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
-import jakarta.persistence.criteria.Expression;
 
 @Service
 public class AlertasServiceImpl implements AlertasService 
@@ -85,6 +84,9 @@ public class AlertasServiceImpl implements AlertasService
     @Autowired
     private AlertasUtils alertasUtils;
 
+    @Autowired
+    private VisibleFieldConfigFilterService visibleFieldConfigFilterService;
+
     private static final DateTimeFormatter SOLO_FECHA = DateTimeFormatter.ofPattern("dd-MM-yyyy");
 
 
@@ -99,6 +101,11 @@ public class AlertasServiceImpl implements AlertasService
         //llamar a logica para agregar columnas de alertas a columnas visibles por alerta
         alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
         alertasUtils.sincronizarCamposVisiblesDeAlertasFilterACamposVisibles();
+
+        //se eliminan las columnas que hayan sido eliminadas de alertas para su visibilidad en el filtro
+        visibleFieldConfigFilterService.deleteVisibleFieldConfigColumns();
+        //elimina las columnas que no esten en alertas en visibilidad de alertas
+        alertasUtils.deleteAllColumnsToVisibleFieldConfig();
         try 
         {
             List<String> gruposCoincidentesParaBuscar =  obtenerGruposCoincidentesConAlertas();
@@ -151,7 +158,7 @@ public class AlertasServiceImpl implements AlertasService
 
 
                 //agregamos campo de iconAssocieteFromProceso en ProcessAssociateIconModel
-                Optional<ProcessAssociateIconModel> findIconUrl = processAssociateIconRepository.findByProcesoAndGrupoLocal(alerta.getProceso(),alerta.getGrupoLocal());
+                Optional<ProcessAssociateIconModel> findIconUrl = processAssociateIconRepository.findByProceso(alerta.getProceso());
 
                 if(!findIconUrl.isPresent())
                 {
@@ -193,6 +200,10 @@ public ResponseEntity<?> findAlertaById(Integer id)
 {
     alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
 
+    //se eliminan las columnas que hayan sido eliminadas de alertas para su visibilidad en el filtro
+    visibleFieldConfigFilterService.deleteVisibleFieldConfigColumns();
+    //elimina las columnas que no esten en alertas en visibilidad de alertas
+    alertasUtils.deleteAllColumnsToVisibleFieldConfig();
     try 
     {
         Map<String, Object> rawAlerta = alertasRepository.findRawAlertById(id);
@@ -238,7 +249,7 @@ public ResponseEntity<?> findAlertaById(Integer id)
 
         visibleData.put("IconAssocieteFromProceso",
             proceso != null
-                ? processAssociateIconRepository.findByProcesoAndGrupoLocal(proceso,grupoLocal.toString())
+                ? processAssociateIconRepository.findByProceso(proceso)
                     .map(ProcessAssociateIconModel::getIconUrl)
                     .orElse("No existe un icono asociado al proceso.")
                 : "Proceso no informado"
@@ -532,6 +543,11 @@ public ResponseEntity<?> findAlertaById(Integer id)
         alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
         alertasUtils.sincronizarCamposVisiblesDeAlertasFilterACamposVisibles();
 
+        //se eliminan las columnas que hayan sido eliminadas de alertas para su visibilidad en el filtro
+        visibleFieldConfigFilterService.deleteVisibleFieldConfigColumns();
+        //elimina las columnas que no esten en alertas en visibilidad de alertas
+        alertasUtils.deleteAllColumnsToVisibleFieldConfig();
+
         try 
         {
             List<String> gruposCoincidentesParaBuscar =  obtenerGruposCoincidentesConAlertas();
@@ -687,7 +703,7 @@ public ResponseEntity<?> findAlertaById(Integer id)
 
 
                 //agregamos campo de iconAssocieteFromProceso en ProcessAssociateIconModel
-                Optional<ProcessAssociateIconModel> findIconUrl = processAssociateIconRepository.findByProcesoAndGrupoLocal(alerta.getProceso(),alerta.getGrupoLocal());
+                Optional<ProcessAssociateIconModel> findIconUrl = processAssociateIconRepository.findByProceso(alerta.getProceso());
                 if(!findIconUrl.isPresent())
                 {
                     visibleData.put("IconAssocieteFromProceso", "No existe un icono asociado al proceso.");
@@ -866,6 +882,11 @@ public ResponseEntity<?> findAlertaById(Integer id)
         alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
         alertasUtils.sincronizarCamposVisiblesDeAlertasFilterACamposVisibles();
 
+        //se eliminan las columnas que hayan sido eliminadas de alertas para su visibilidad en el filtro
+        visibleFieldConfigFilterService.deleteVisibleFieldConfigColumns();
+        //elimina las columnas que no esten en alertas en visibilidad de alertas
+        alertasUtils.deleteAllColumnsToVisibleFieldConfig();
+
         try 
         {
 
@@ -927,18 +948,25 @@ filtros.forEach((campo, valor) -> {
         return;
     }
 
+    try 
+    {
+        List<String> gruposUsuario = obtenerGruposCoincidentesConAlertas();
+
+        if (gruposUsuario != null && !gruposUsuario.isEmpty()) 
+        {
+            predicates.add(root.get("grupoLocal").in(gruposUsuario));
+        }
+
+    } catch (Exception e) 
+    {
+        e.printStackTrace();
+    }
+
     // ignoramos los que ya manejamos
     if (campo.equalsIgnoreCase("fechaInicio") || campo.equalsIgnoreCase("fechaFin")) 
     {
         return;
     }
-
-    if (campo.equalsIgnoreCase("grupoLocal")) 
-    {
-        predicates.add(cb.equal(root.get("grupoLocal"), valor.toString()));
-        return;
-    }
-
 
     try {
         Path<Object> path = root.get(campo);
@@ -1258,7 +1286,10 @@ List<AlertasModel> leidasConIcono = alertasLeidas.stream()
 
         //llamar a logica para agregar columnas de alertas a columnas visibles por alerta
         alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
-
+        //se eliminan las columnas que hayan sido eliminadas de alertas para su visibilidad en el filtro
+        visibleFieldConfigFilterService.deleteVisibleFieldConfigColumns();
+        //elimina las columnas que no esten en alertas en visibilidad de alertas
+        alertasUtils.deleteAllColumnsToVisibleFieldConfig();
 
         try {
             if (dto.getAlertas() == null) 

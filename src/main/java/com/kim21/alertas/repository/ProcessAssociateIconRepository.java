@@ -11,9 +11,4 @@ import java.util.Optional;
 public interface ProcessAssociateIconRepository extends JpaRepository<ProcessAssociateIconModel, Integer> 
 {
     Optional<ProcessAssociateIconModel> findByProceso(String proceso);
-
-    Optional<ProcessAssociateIconModel> findByProcesoAndGrupoLocal(String proceso, String grupoLocal);
-
-    List<ProcessAssociateIconModel> findAllByGrupoLocalIn(List<String> obtenerGruposCoincidentesConAlertas);
-
 }

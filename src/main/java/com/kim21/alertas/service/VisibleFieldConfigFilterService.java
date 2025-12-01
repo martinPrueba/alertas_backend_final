@@ -10,5 +10,5 @@ public interface VisibleFieldConfigFilterService
 {
     ResponseEntity<?> findAll();
     ResponseEntity<?> updateAll(List<VisibleFieldConfigFilterModel> listVisibleFieldsFilter);
-
+    void deleteVisibleFieldConfigColumns();
 }

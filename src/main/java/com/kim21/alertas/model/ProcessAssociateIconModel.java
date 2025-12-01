@@ -21,7 +21,4 @@ public class ProcessAssociateIconModel
 
     @Column(name = "icon_url", nullable = false)
     private String iconUrl;
-
-    @Column(name = "grupo_local", nullable = false)
-    private String grupoLocal;
 }

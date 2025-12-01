@@ -3,6 +3,9 @@ package com.kim21.alertas.service;
 import com.kim21.alertas.model.VisibleFieldConfigFilterModel;
 import com.kim21.alertas.repository.AlertasRepository;
 import com.kim21.alertas.repository.VisibleFieldConfigFilterRepository;
+
+import jakarta.transaction.Transactional;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
@@ -93,6 +96,46 @@ public class VisibleFieldConfigFilterServiceImpl implements VisibleFieldConfigFi
             return ResponseEntity.internalServerError().body(Map.of("message","❌ Error al actualizar/insertar VisibleFieldConfigFilter: " + e.getMessage()));
         }
 
+    }
+
+    @Transactional
+    @Override
+    public void deleteVisibleFieldConfigColumns() 
+    {
+        try 
+        {
+            // 1️⃣ Obtener columnas reales normalizadas
+            List<String> columnasRealesAlertas = alertasRepository.obtenerColumnasDeAlertas()
+                    .stream()
+                    .map(c -> c.trim().toLowerCase())
+                    .toList();
+
+                // 2️⃣ Obtener columnas ya existentes normalizadas
+            List<String> camposExistentesVisibleFieldConfig = repository.findAll()
+                    .stream()
+                    .map(v -> v.getFieldName().trim().toLowerCase())
+                    .toList();
+
+            List<String> visibleFieldConfigToDelete = new ArrayList<>();
+
+            for (String columnaConfigFilter : camposExistentesVisibleFieldConfig) 
+            {
+                if(!columnasRealesAlertas.contains(columnaConfigFilter))
+                {
+                    //agregamos a la lista la columna que no existe del filtro en alertas para eliminarla
+                    visibleFieldConfigToDelete.add(columnaConfigFilter);
+                }    
+            }
+
+            System.out.println("ESTAAAAA ES LA LISTA QUE ELIMINAREMOS " + visibleFieldConfigToDelete);
+            //una vez que la agregamos debemos eliminarla del visibleFieldConfig
+            repository.deleteAllByFieldNameIn(visibleFieldConfigToDelete);
+
+        } 
+        catch (Exception e) 
+        {
+            e.printStackTrace();
+        }
     }
 
 

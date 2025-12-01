@@ -1,6 +1,7 @@
 package com.kim21.alertas.util;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -14,6 +15,8 @@ import com.kim21.alertas.repository.AlertasRepository;
 import com.kim21.alertas.repository.VisibleFieldConfigFilterRepository;
 import com.kim21.alertas.repository.VisibleFieldConfigRepository;
 
+import jakarta.transaction.Transactional;
+
 @Service
 public class AlertasUtils 
 {
@@ -26,6 +29,8 @@ public class AlertasUtils
 
     @Autowired
     private VisibleFieldConfigFilterRepository visibleFieldConfigFilterRepository;
+
+
 
         /**
      * Sincroniza la tabla alerta_visible_fields insertando los campos
@@ -106,6 +111,44 @@ public void sincronizarCamposVisiblesDeAlertasFilterACamposVisibles() {
         }
     }
 }
+
+@Transactional
+    public void deleteAllColumnsToVisibleFieldConfig()
+    {
+        try 
+            {
+                // 1️⃣ Obtener columnas reales normalizadas
+                List<String> columnasRealesAlertas = alertasRepository.obtenerColumnasDeAlertas()
+                        .stream()
+                        .map(c -> c.trim().toLowerCase())
+                        .toList();
+
+                    // 2️⃣ Obtener columnas ya existentes normalizadas
+                List<String> camposExistentesVisibleField = visibleFieldConfigRepository.findAll()
+                        .stream()
+                        .map(v -> v.getFieldName().trim().toLowerCase())
+                        .toList();
+
+                List<String> visibleFieldConfigToDelete = new ArrayList<>();
+
+                for (String columnaConfigFilter : camposExistentesVisibleField) 
+                {
+                    if(!columnasRealesAlertas.contains(columnaConfigFilter))
+                    {
+                        //agregamos a la lista la columna que no existe del filtro en alertas para eliminarla
+                        visibleFieldConfigToDelete.add(columnaConfigFilter);
+                    }    
+                }
+
+                //una vez que la agregamos debemos eliminarla del visibleFieldConfig
+                visibleFieldConfigRepository.deleteAllByFieldNameIn(visibleFieldConfigToDelete);
+
+            } 
+            catch (Exception e) 
+            {
+                e.printStackTrace();
+            }
+    }
 
 
 

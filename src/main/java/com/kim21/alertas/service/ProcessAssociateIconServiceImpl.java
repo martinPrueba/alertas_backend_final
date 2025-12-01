@@ -65,9 +65,7 @@ public class ProcessAssociateIconServiceImpl implements ProcessAssociateIconServ
         try 
         {
             // Validación básica
-            if (dto.getProceso() == null || dto.getProceso().isBlank() ||
-                dto.getIconUrl() == null || dto.getIconUrl().isBlank() || dto.getGrupoLocal() == null || dto.getGrupoLocal().isBlank()
-                )
+            if (dto.getProceso() == null || dto.getProceso().isBlank() || dto.getIconUrl() == null || dto.getIconUrl().isBlank())
 
             {
                 return ResponseEntity.badRequest().body(Map.of("error", "Los campos 'proceso' e 'iconUrl' son obligatorios."));
@@ -83,19 +81,12 @@ public class ProcessAssociateIconServiceImpl implements ProcessAssociateIconServ
             ProcessAssociateIconModel entity = ProcessAssociateIconModel.builder()
                     .proceso(dto.getProceso())
                     .iconUrl(dto.getIconUrl())
-                    .grupoLocal(dto.getGrupoLocal())
                     .build();
 
             // Guardar en BD
             ProcessAssociateIconModel saved = repository.save(entity);
 
-            // Convertir de nuevo a DTO para la respuesta
-            ProcessAssociateIconDTO responseDto = ProcessAssociateIconDTO.builder()
-                    .proceso(saved.getProceso())
-                    .iconUrl(saved.getIconUrl())
-                    .build();
-
-            return ResponseEntity.ok(responseDto);
+            return ResponseEntity.ok(saved);
 
         } 
         catch (Exception e) 
@@ -149,21 +140,16 @@ public class ProcessAssociateIconServiceImpl implements ProcessAssociateIconServ
     @Override
     public ResponseEntity<?> getAllProcesos() 
     {
-        //List<ProcessAssociateIconModel> listaProcesos= new ArrayList<>(repository.findAllByGrupoLocal(alertasService.obtenerGruposCoincidentesConAlertas()));
         try 
         {
-            List<ProcessAssociateIconModel> listaProcesos = repository.findAllByGrupoLocalIn(alertasService.obtenerGruposCoincidentesConAlertas());
-
-            List<AlertasModel> allAlerts = alertasRepository.findAll();
-
+            List<ProcessAssociateIconModel> listaProcesos = repository.findAll();
             List<ProcessAssociateIconModel> returnList = new ArrayList<>();
-
 
             //debo agregar el grupo local para poder mostralo en el frontend
             for (ProcessAssociateIconModel processAsocciete : listaProcesos) 
             {
 
-                if(processAsocciete.getProceso() != null && processAsocciete.getGrupoLocal() != null)
+                if(processAsocciete.getProceso() != null)
                 {
                     returnList.add(processAsocciete);
                 }
