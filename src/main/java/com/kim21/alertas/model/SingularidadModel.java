@@ -111,4 +111,7 @@ public class SingularidadModel
 
     @Column(name = "singularidad_alertaid")
     private Integer singularidadAlertaId;
+
+    @Transient
+    private String iconAssocieteFromProceso;
 }
