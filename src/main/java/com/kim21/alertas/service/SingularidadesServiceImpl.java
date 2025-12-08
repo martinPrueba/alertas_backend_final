@@ -302,11 +302,18 @@ public class SingularidadesServiceImpl implements SingularidadesService
     {
         try
         {
+            List<String> gruposUsuario = obtenerGruposCoincidentesConSingularidades();
+            if (gruposUsuario == null || gruposUsuario.isEmpty())
+            {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "No existen grupos asociados al usuario."));
+            }
+
             CriteriaBuilder cb = entityManager.getCriteriaBuilder();
             CriteriaQuery<SingularidadModel> query = cb.createQuery(SingularidadModel.class);
             Root<SingularidadModel> root = query.from(SingularidadModel.class);
 
             List<Predicate> predicates = new ArrayList<>();
+            predicates.add(root.get("grupoLocal").in(gruposUsuario));
 
             Object fechaInicioObj = filtros.get("fechaInicio");
             Object fechaFinObj = filtros.get("fechaFin");
@@ -359,15 +366,138 @@ public class SingularidadesServiceImpl implements SingularidadesService
                     return;
                 }
 
+                if (campo.equalsIgnoreCase("fechaInicio") || campo.equalsIgnoreCase("fechaFin"))
+                {
+                    return;
+                }
+
                 try
                 {
-                    List<String> gruposUsuario = obtenerGruposCoincidentesConSingularidades();
+                    Path<Object> path = root.get(campo);
 
-                    if (gruposUsuario != null && !gruposUsuario.isEmpty())
+                    if (campo.equalsIgnoreCase("valida"))
                     {
-                        predicates.add(root.get("grupoLocal").in(gruposUsuario));
-    }
+                        predicates.add(cb.equal(root.get("valida"), Boolean.valueOf(valor.toString())));
+                        return;
+                    }
 
+                    if (valor instanceof String)
+                    {
+                        predicates.add(cb.like(cb.lower(path.as(String.class)),
+                                "%" + valor.toString().toLowerCase() + "%"));
+                    }
+                    else if (valor instanceof Number)
+                    {
+                        predicates.add(cb.equal(path, valor));
+                    }
+                    else if (valor instanceof Boolean)
+                    {
+                        predicates.add(cb.equal(path.as(Boolean.class), (Boolean) valor));
+                    }
+                    else if (valor instanceof Map)
+                    {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> rango = (Map<String, Object>) valor;
+
+                        if (rango.containsKey("min") && rango.containsKey("max"))
+                        {
+                            predicates.add(cb.between(
+                                    path.as(Double.class),
+                                    cb.literal(((Number) rango.get("min")).doubleValue()),
+                                    cb.literal(((Number) rango.get("max")).doubleValue())
+                            ));
+                        }
+                        else if (rango.containsKey("min"))
+                        {
+                            predicates.add(cb.greaterThanOrEqualTo(
+                                    path.as(Double.class),
+                                    cb.literal(((Number) rango.get("min")).doubleValue())
+                            ));
+                        }
+                        else if (rango.containsKey("max"))
+                        {
+                            predicates.add(cb.lessThanOrEqualTo(
+                                    path.as(Double.class),
+                                    cb.literal(((Number) rango.get("max")).doubleValue())
+                            ));
+                        }
+                    }
+
+                }
+                catch (IllegalArgumentException e)
+                {
+                    System.out.println("Campo ignorado: " + campo);
+                }
+            });
+
+            query.where(cb.and(predicates.toArray(new Predicate[0])));
+
+            List<SingularidadModel> result = entityManager.createQuery(query).getResultList();
+
+            List<SingularidadModel> singularidadesNormales = new ArrayList<>();
+            List<SingularidadModel> singularidadesLeidas = new ArrayList<>();
+
+            for (SingularidadModel singularidad : result)
+            {
+                if (singularidad.getValida() == null)
+                {
+                    singularidadesNormales.add(singularidad);
+                }
+                else
+                {
+                    singularidadesLeidas.add(singularidad);
+                }
+            }
+
+            Map<String, String> iconMap = processAssociateIconRepository.findAll()
+                    .stream()
+                    .collect(Collectors.toMap(
+                            ProcessAssociateIconModel::getProceso,
+                            ProcessAssociateIconModel::getIconUrl
+                    ));
+
+            List<SingularidadModel> normalesConIcono = singularidadesNormales.stream()
+                    .peek(s -> s.setIconAssocieteFromProceso(
+                            iconMap.getOrDefault(s.getProceso(), "No existe un icono asociado al proceso.")
+                    ))
+                    .collect(Collectors.toList());
+
+            List<SingularidadModel> leidasConIcono = singularidadesLeidas.stream()
+                    .peek(s -> s.setIconAssocieteFromProceso(
+                            iconMap.getOrDefault(s.getProceso(), "No existe un icono asociado al proceso.")
+                    ))
+                    .collect(Collectors.toList());
+
+            Object singularidadesActivasRaw = filtros.get("alarmasActivas");
+
+            if (singularidadesActivasRaw != null)
+            {
+                boolean singularidadesActivas = Boolean.parseBoolean(String.valueOf(filtros.get("alarmasActivas")));
+
+                if (singularidadesActivas)
+                {
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("singularidades", normalesConIcono);
+                    response.put("singularidadesLeidas", new ArrayList<>());
+                    return ResponseEntity.ok(response);
+                }
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("singularidades", normalesConIcono);
+            response.put("singularidadesLeidas", leidasConIcono);
+
+            return ResponseEntity.ok(response);
+
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                    Map.of("error", "Error al filtrar dinamicamente", "detalle", e.getMessage())
+            );
+        }
+    }
     private Map<String, Object> buildVisibleDataEstadisticas(List<String> camposVisibles, SingularidadesEstadisticasModel model)
     {
         Map<String, Object> visibleData = new HashMap<>();
