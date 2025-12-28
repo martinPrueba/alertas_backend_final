@@ -3,6 +3,10 @@ package com.kim21.alertas.controller;
 import com.kim21.alertas.model.SingularidadEstadisticasVisibleFieldModel;
 import com.kim21.alertas.service.VisibleFieldsConfigSingularidadesEstadisticasService;
 import lombok.RequiredArgsConstructor;
+
+import java.util.List;
+import java.util.Map;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -36,4 +40,20 @@ public class VisibleFieldsConfigSingularidadesEstadisticasController
     {
         return service.delete(id);
     }
-}
+
+    @PutMapping("/update-all")
+    public ResponseEntity<?> updateAll(@RequestBody List<SingularidadEstadisticasVisibleFieldModel> lista) 
+    {
+        try 
+        {
+            service.updateAllByFieldName(lista);
+            return ResponseEntity.ok(Map.of("message", "Campos actualizados correctamente"));
+        } 
+        catch (Exception e) 
+        {
+            return ResponseEntity.status(500).body(Map.of("error", "Error al actualizar campos", "details", e.getMessage()));
+        }
+    }
+
+
+} 

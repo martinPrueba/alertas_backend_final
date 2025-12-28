@@ -36,4 +36,6 @@ public class VisibleFieldsFilterConfigSingularidadesController
     {
         return service.delete(id);
     }
+
+    
 }

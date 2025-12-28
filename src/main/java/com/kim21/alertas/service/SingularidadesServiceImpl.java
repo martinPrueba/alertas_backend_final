@@ -4,9 +4,6 @@ import com.kim21.alertas.dto.SingularidadMarcarLeidaDTO;
 import com.kim21.alertas.dto.SingularidadReportDTO;
 import com.kim21.alertas.model.ProcessAssociateIconModel;
 import com.kim21.alertas.model.SingularidadModel;
-import com.kim21.alertas.model.SingularidadEstadisticasVisibleFieldModel;
-import com.kim21.alertas.model.SingularidadesEstadisticasModel;
-import com.kim21.alertas.model.SingularidadesVisibleFieldFilterModel;
 import com.kim21.alertas.model.SingularidadesVisibleFieldModel;
 import com.kim21.alertas.repository.ProcessAssociateIconRepository;
 import com.kim21.alertas.repository.SingularidadEstadisticasVisibleFieldRepository;
@@ -95,6 +92,7 @@ public class SingularidadesServiceImpl implements SingularidadesService
             for (SingularidadModel singularidad : singularidades)
             {
                 Map<String, Object> visibleData = buildVisibleData(camposVisibles, singularidad);
+                visibleData.put("id", singularidad.getId());
 
                 //Agregar icono 
                 //agregamos campo de iconAssocieteFromProceso en ProcessAssociateIconModel
@@ -150,24 +148,47 @@ public class SingularidadesServiceImpl implements SingularidadesService
                     .map(SingularidadesVisibleFieldModel::getFieldName)
                     .collect(Collectors.toList());
 
+            camposVisibles = new ArrayList<>(camposVisibles);
+            camposVisibles.sort(String.CASE_INSENSITIVE_ORDER);
+
             List<Map<String, Object>> singularidadesVisibles = new ArrayList<>();
             for (SingularidadModel singularidad : singularidades)
             {
-                Map<String, Object> visibleData = buildVisibleData(camposVisibles, singularidad);
-                                Optional<ProcessAssociateIconModel> findIconUrl = processAssociateIconRepository.findByProceso(singularidad.getProceso());
+                Map<String, Object> visibleData = new LinkedHashMap<>();
+                for (String campo : camposVisibles)
+                {
+                    try
+                    {
+                        String fieldName = COLUMN_TO_FIELD.getOrDefault(campo, campo);
+                        String getterName = "get" + Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);
+
+                        Method getter = SingularidadModel.class.getMethod(getterName);
+                        Object valor = getter.invoke(singularidad);
+
+                        if (("fecha_reconocimiento".equalsIgnoreCase(campo) || "fecha_alerta".equalsIgnoreCase(campo) || "fechasingularidad".equalsIgnoreCase(campo)) && valor != null)
+                        {
+                            OffsetDateTime fecha = (OffsetDateTime) valor;
+                            valor = fecha.format(FORMATTER);
+                        }
+
+                        visibleData.put(campo, valor);
+                    }
+                    catch (Exception e)
+                    {
+                        System.err.println("Error accediendo al campo: " + campo + " ƒÅ' " + e.getMessage());
+                    }
+                }
+
+                Optional<ProcessAssociateIconModel> findIconUrl = processAssociateIconRepository.findByProceso(singularidad.getProceso());
 
                 if(!findIconUrl.isPresent())
                 {
-                    //alerta.setIconAssocieteFromProceso("No existe un icono asociado al proceso.");
                     visibleData.put("IconAssocieteFromProceso", "No existe un icono asociado al proceso.");
                 }
                 else
                 {
-                    //buscar la url asociada al proceso en 
-                    //alerta.setIconAssocieteFromProceso(findIconUrl.get().getIconUrl());
-
                     visibleData.put("IconAssocieteFromProceso", findIconUrl.get().getIconUrl());
-                }  
+                }
 
                 singularidadesVisibles.add(visibleData);
             }
@@ -188,7 +209,8 @@ public class SingularidadesServiceImpl implements SingularidadesService
     {
         try
         {
-            Optional<SingularidadModel> singularidadOpt = singularidadesRepository.findById(dto.getSingularidadId());
+            Integer singularidadId = dto.getId() != null ? dto.getId() : dto.getSingularidadId();
+            Optional<SingularidadModel> singularidadOpt = singularidadesRepository.findById(singularidadId);
             if (singularidadOpt.isEmpty())
             {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "No se encontró la singularidad"));
@@ -223,6 +245,8 @@ public class SingularidadesServiceImpl implements SingularidadesService
             singularidad.setUserId(usuario);
             singularidad.setComentario(dto.getComentario());
             singularidad.setValida(dto.isValida());
+            singularidad.setCodigo1(dto.getCodigo1());
+            singularidad.setCodigo2(dto.getCodigo2());
             singularidad.setFechaReconocimiento(fechaReconocimiento);
             singularidad.setTiempoReconocimiento(tiempoReconocimiento);
 
@@ -297,498 +321,6 @@ public class SingularidadesServiceImpl implements SingularidadesService
         }
     }
 
-    @Override
-    public ResponseEntity<?> filtrarDinamico(Map<String, Object> filtros)
-    {
-        try
-        {
-            List<String> gruposUsuario = obtenerGruposCoincidentesConSingularidades();
-            if (gruposUsuario == null || gruposUsuario.isEmpty())
-            {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "No existen grupos asociados al usuario."));
-            }
-
-            CriteriaBuilder cb = entityManager.getCriteriaBuilder();
-            CriteriaQuery<SingularidadModel> query = cb.createQuery(SingularidadModel.class);
-            Root<SingularidadModel> root = query.from(SingularidadModel.class);
-
-            List<Predicate> predicates = new ArrayList<>();
-            predicates.add(root.get("grupoLocal").in(gruposUsuario));
-
-            Object fechaInicioObj = filtros.get("fechaInicio");
-            Object fechaFinObj = filtros.get("fechaFin");
-
-            boolean tieneInicio = fechaInicioObj != null && !fechaInicioObj.toString().isBlank();
-            boolean tieneFin = fechaFinObj != null && !fechaFinObj.toString().isBlank();
-
-            if (tieneInicio || tieneFin)
-            {
-                try
-                {
-                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-
-                    LocalDate fechaInicio = tieneInicio ? LocalDate.parse(fechaInicioObj.toString(), formatter) : null;
-                    LocalDate fechaFin = tieneFin ? LocalDate.parse(fechaFinObj.toString(), formatter) : null;
-
-                    ZoneOffset offset = ZoneOffset.of("-03:00");
-
-                    OffsetDateTime inicioDelDia = fechaInicio != null ? fechaInicio.atStartOfDay().atOffset(offset) : null;
-                    OffsetDateTime finDelDia = fechaFin != null ? fechaFin.atTime(23, 59, 59).atOffset(offset) : null;
-
-                    Path<OffsetDateTime> campoFecha = root.get("fechaSingularidad");
-
-                    if (inicioDelDia != null && finDelDia != null)
-                    {
-                        predicates.add(cb.between(campoFecha, inicioDelDia, finDelDia));
-                    }
-                    else if (inicioDelDia != null)
-                    {
-                        predicates.add(cb.greaterThanOrEqualTo(campoFecha, inicioDelDia));
-                    }
-                    else
-                    {
-                        predicates.add(cb.lessThanOrEqualTo(campoFecha, finDelDia));
-                    }
-                }
-                catch (Exception e)
-                {
-                    return ResponseEntity.badRequest().body(Map.of(
-                            "error", "Formato de fecha invalido",
-                            "detalle", "Usa formato: 2025-10-04 (solo dia/mes/anio)"
-                    ));
-                }
-            }
-
-            filtros.forEach((campo, valor) ->
-            {
-                if (valor == null || campo == null)
-                {
-                    return;
-                }
-
-                if (campo.equalsIgnoreCase("fechaInicio") || campo.equalsIgnoreCase("fechaFin"))
-                {
-                    return;
-                }
-
-                try
-                {
-                    Path<Object> path = root.get(campo);
-
-                    if (campo.equalsIgnoreCase("valida"))
-                    {
-                        predicates.add(cb.equal(root.get("valida"), Boolean.valueOf(valor.toString())));
-                        return;
-                    }
-
-                    if (valor instanceof String)
-                    {
-                        predicates.add(cb.like(cb.lower(path.as(String.class)),
-                                "%" + valor.toString().toLowerCase() + "%"));
-                    }
-                    else if (valor instanceof Number)
-                    {
-                        predicates.add(cb.equal(path, valor));
-                    }
-                    else if (valor instanceof Boolean)
-                    {
-                        predicates.add(cb.equal(path.as(Boolean.class), (Boolean) valor));
-                    }
-                    else if (valor instanceof Map)
-                    {
-                        @SuppressWarnings("unchecked")
-                        Map<String, Object> rango = (Map<String, Object>) valor;
-
-                        if (rango.containsKey("min") && rango.containsKey("max"))
-                        {
-                            predicates.add(cb.between(
-                                    path.as(Double.class),
-                                    cb.literal(((Number) rango.get("min")).doubleValue()),
-                                    cb.literal(((Number) rango.get("max")).doubleValue())
-                            ));
-                        }
-                        else if (rango.containsKey("min"))
-                        {
-                            predicates.add(cb.greaterThanOrEqualTo(
-                                    path.as(Double.class),
-                                    cb.literal(((Number) rango.get("min")).doubleValue())
-                            ));
-                        }
-                        else if (rango.containsKey("max"))
-                        {
-                            predicates.add(cb.lessThanOrEqualTo(
-                                    path.as(Double.class),
-                                    cb.literal(((Number) rango.get("max")).doubleValue())
-                            ));
-                        }
-                    }
-
-                }
-                catch (IllegalArgumentException e)
-                {
-                    System.out.println("Campo ignorado: " + campo);
-                }
-            });
-
-            query.where(cb.and(predicates.toArray(new Predicate[0])));
-
-            List<SingularidadModel> result = entityManager.createQuery(query).getResultList();
-
-            List<SingularidadModel> singularidadesNormales = new ArrayList<>();
-            List<SingularidadModel> singularidadesLeidas = new ArrayList<>();
-
-            for (SingularidadModel singularidad : result)
-            {
-                if (singularidad.getValida() == null)
-                {
-                    singularidadesNormales.add(singularidad);
-                }
-                else
-                {
-                    singularidadesLeidas.add(singularidad);
-                }
-            }
-
-            Map<String, String> iconMap = processAssociateIconRepository.findAll()
-                    .stream()
-                    .collect(Collectors.toMap(
-                            ProcessAssociateIconModel::getProceso,
-                            ProcessAssociateIconModel::getIconUrl
-                    ));
-
-            List<SingularidadModel> normalesConIcono = singularidadesNormales.stream()
-                    .peek(s -> s.setIconAssocieteFromProceso(
-                            iconMap.getOrDefault(s.getProceso(), "No existe un icono asociado al proceso.")
-                    ))
-                    .collect(Collectors.toList());
-
-            List<SingularidadModel> leidasConIcono = singularidadesLeidas.stream()
-                    .peek(s -> s.setIconAssocieteFromProceso(
-                            iconMap.getOrDefault(s.getProceso(), "No existe un icono asociado al proceso.")
-                    ))
-                    .collect(Collectors.toList());
-
-            Object singularidadesActivasRaw = filtros.get("alarmasActivas");
-
-            if (singularidadesActivasRaw != null)
-            {
-                boolean singularidadesActivas = Boolean.parseBoolean(String.valueOf(filtros.get("alarmasActivas")));
-
-                if (singularidadesActivas)
-                {
-                    Map<String, Object> response = new HashMap<>();
-                    response.put("singularidades", normalesConIcono);
-                    response.put("singularidadesLeidas", new ArrayList<>());
-                    return ResponseEntity.ok(response);
-                }
-            }
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("singularidades", normalesConIcono);
-            response.put("singularidadesLeidas", leidasConIcono);
-
-            return ResponseEntity.ok(response);
-
-        }
-        catch (Exception e)
-        {
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
-                    Map.of("error", "Error al filtrar dinamicamente", "detalle", e.getMessage())
-            );
-        }
-    }
-    private Map<String, Object> buildVisibleDataEstadisticas(List<String> camposVisibles, SingularidadesEstadisticasModel model)
-    {
-        Map<String, Object> visibleData = new HashMap<>();
-        for (String campo : camposVisibles)
-        {
-            try
-            {
-                String getterName = "get" + Character.toUpperCase(campo.charAt(0)) + campo.substring(1);
-                Method getter = SingularidadesEstadisticasModel.class.getMethod(getterName);
-                Object valor = getter.invoke(model);
-                visibleData.put(campo, valor);
-            }
-            catch (Exception e)
-            {
-                System.err.println("Campo ignorado en estadisticas: " + campo + " -> " + e.getMessage());
-            }
-        }
-        return visibleData;
-    }
-
-}
-                catch (Exception e)
-                {
-                    e.printStackTrace();
-                }
-
-                if (campo.equalsIgnoreCase("fechaInicio") || campo.equalsIgnoreCase("fechaFin"))
-                {
-                    return;
-                }
-
-                try
-                {
-                    Path<Object> path = root.get(campo);
-
-                    if (campo.equalsIgnoreCase("valida"))
-                    {
-                        predicates.add(cb.equal(root.get("valida"), Boolean.valueOf(valor.toString())));
-                        return;
-                    }
-
-                    if (valor instanceof String)
-                    {
-                        predicates.add(cb.like(cb.lower(path.as(String.class)),
-                                "%" + valor.toString().toLowerCase() + "%"));
-                    }
-                    else if (valor instanceof Number)
-                    {
-                        predicates.add(cb.equal(path, valor));
-                    }
-                    else if (valor instanceof Boolean)
-                    {
-                        predicates.add(cb.equal(path.as(Boolean.class), (Boolean) valor));
-                    }
-                    else if (valor instanceof Map)
-                    {
-                        @SuppressWarnings("unchecked")
-                        Map<String, Object> rango = (Map<String, Object>) valor;
-
-                        if (rango.containsKey("min") && rango.containsKey("max"))
-                        {
-                            predicates.add(cb.between(
-                                    path.as(Double.class),
-                                    cb.literal(((Number) rango.get("min")).doubleValue()),
-                                    cb.literal(((Number) rango.get("max")).doubleValue())
-                            ));
-                        }
-                        else if (rango.containsKey("min"))
-                        {
-                            predicates.add(cb.greaterThanOrEqualTo(
-                                    path.as(Double.class),
-                                    cb.literal(((Number) rango.get("min")).doubleValue())
-                            ));
-                        }
-                        else if (rango.containsKey("max"))
-                        {
-                            predicates.add(cb.lessThanOrEqualTo(
-                                    path.as(Double.class),
-                                    cb.literal(((Number) rango.get("max")).doubleValue())
-                            ));
-                        }
-                    }
-
-                }
-                catch (IllegalArgumentException e)
-                {
-                    System.out.println("Campo ignorado: " + campo);
-                }
-            });
-
-            query.where(cb.and(predicates.toArray(new Predicate[0])));
-
-            List<SingularidadModel> result = entityManager.createQuery(query).getResultList();
-
-            List<SingularidadModel> singularidadesNormales = new ArrayList<>();
-            List<SingularidadModel> singularidadesLeidas = new ArrayList<>();
-
-            for (SingularidadModel singularidad : result)
-            {
-                if (singularidad.getValida() == null)
-                {
-                    singularidadesNormales.add(singularidad);
-                }
-                else
-                {
-                    singularidadesLeidas.add(singularidad);
-                }
-            }
-
-            Map<String, String> iconMap = processAssociateIconRepository.findAll()
-                    .stream()
-                    .collect(Collectors.toMap(
-                            ProcessAssociateIconModel::getProceso,
-                            ProcessAssociateIconModel::getIconUrl
-                    ));
-
-            List<SingularidadModel> normalesConIcono = singularidadesNormales.stream()
-                    .peek(s -> s.setIconAssocieteFromProceso(
-                            iconMap.getOrDefault(s.getProceso(), "No existe un icono asociado al proceso.")
-                    ))
-                    .collect(Collectors.toList());
-
-            List<SingularidadModel> leidasConIcono = singularidadesLeidas.stream()
-                    .peek(s -> s.setIconAssocieteFromProceso(
-                            iconMap.getOrDefault(s.getProceso(), "No existe un icono asociado al proceso.")
-                    ))
-                    .collect(Collectors.toList());
-
-            Object singularidadesActivasRaw = filtros.get("alarmasActivas");
-
-            if (singularidadesActivasRaw != null)
-            {
-                boolean singularidadesActivas = Boolean.parseBoolean(String.valueOf(filtros.get("alarmasActivas")));
-
-                if (singularidadesActivas)
-                {
-                    Map<String, Object> response = new HashMap<>();
-                    response.put("singularidades", normalesConIcono);
-                    response.put("singularidadesLeidas", new ArrayList<>());
-                    return ResponseEntity.ok(response);
-                }
-            }
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("singularidades", normalesConIcono);
-            response.put("singularidadesLeidas", leidasConIcono);
-
-            return ResponseEntity.ok(response);
-
-        }
-        catch (Exception e)
-        {
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
-                    Map.of("error", "Error al filtrar dinamicamente", "detalle", e.getMessage())
-            );
-        }
-    }
-
-    @Override
-    public ResponseEntity<?> getAllSingularidadEstadisticasVisibleFields()
-    {
-        return ResponseEntity.ok(singularidadEstadisticasVisibleFieldRepository.findAll());
-    }
-
-    @Override
-    public ResponseEntity<?> createSingularidadEstadisticasVisibleField(SingularidadEstadisticasVisibleFieldModel body)
-    {
-        return ResponseEntity.ok(singularidadEstadisticasVisibleFieldRepository.save(body));
-    }
-
-    @Override
-    public ResponseEntity<?> updateSingularidadEstadisticasVisibleField(Long id, SingularidadEstadisticasVisibleFieldModel body)
-    {
-        return singularidadEstadisticasVisibleFieldRepository.findById(id)
-                .map(existing -> {
-                    existing.setFieldName(body.getFieldName());
-                    existing.setVisible(body.getVisible());
-                    return ResponseEntity.ok(singularidadEstadisticasVisibleFieldRepository.save(existing));
-                })
-                .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "No existe configuracion con ese id")));
-    }
-
-    @Override
-    public ResponseEntity<?> deleteSingularidadEstadisticasVisibleField(Long id)
-    {
-        if (!singularidadEstadisticasVisibleFieldRepository.existsById(id))
-        {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "No existe configuracion con ese id"));
-        }
-        singularidadEstadisticasVisibleFieldRepository.deleteById(id);
-        return ResponseEntity.noContent().build();
-    }
-
-    @Override
-    public ResponseEntity<?> getAllSingularidadesVisibleFieldFilters()
-    {
-        return ResponseEntity.ok(singularidadesVisibleFieldFilterRepository.findAll());
-    }
-
-    @Override
-    public ResponseEntity<?> createSingularidadesVisibleFieldFilter(SingularidadesVisibleFieldFilterModel body)
-    {
-        return ResponseEntity.ok(singularidadesVisibleFieldFilterRepository.save(body));
-    }
-
-    @Override
-    public ResponseEntity<?> updateSingularidadesVisibleFieldFilter(Long id, SingularidadesVisibleFieldFilterModel body)
-    {
-        return singularidadesVisibleFieldFilterRepository.findById(id)
-                .map(existing -> {
-                    existing.setFieldName(body.getFieldName());
-                    existing.setVisible(body.getVisible());
-                    return ResponseEntity.ok(singularidadesVisibleFieldFilterRepository.save(existing));
-                })
-                .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "No existe configuracion con ese id")));
-    }
-
-    @Override
-    public ResponseEntity<?> deleteSingularidadesVisibleFieldFilter(Long id)
-    {
-        if (!singularidadesVisibleFieldFilterRepository.existsById(id))
-        {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "No existe configuracion con ese id"));
-        }
-        singularidadesVisibleFieldFilterRepository.deleteById(id);
-        return ResponseEntity.noContent().build();
-    }
-
-    @Override
-    public ResponseEntity<?> getAllSingularidadesEstadisticas()
-    {
-        List<SingularidadEstadisticasVisibleFieldModel> visibles = singularidadEstadisticasVisibleFieldRepository.findAll()
-                .stream()
-                .filter(SingularidadEstadisticasVisibleFieldModel::getVisible)
-                .toList();
-        List<String> camposVisibles = visibles.stream().map(SingularidadEstadisticasVisibleFieldModel::getFieldName).toList();
-
-        List<Map<String, Object>> body = singularidadesEstadisticasRepository.findAll()
-                .stream()
-                .map(m -> buildVisibleDataEstadisticas(camposVisibles, m))
-                .toList();
-
-        return ResponseEntity.ok(body);
-    }
-
-    @Override
-    public ResponseEntity<?> getSingularidadesEstadisticasById(Integer id)
-    {
-        Optional<SingularidadesEstadisticasModel> opt = singularidadesEstadisticasRepository.findById(id);
-        if (opt.isEmpty())
-        {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "No existe singularidad estadistica"));
-        }
-
-        List<String> camposVisibles = singularidadEstadisticasVisibleFieldRepository.findAll()
-                .stream()
-                .filter(SingularidadEstadisticasVisibleFieldModel::getVisible)
-                .map(SingularidadEstadisticasVisibleFieldModel::getFieldName)
-                .toList();
-
-        return ResponseEntity.ok(buildVisibleDataEstadisticas(camposVisibles, opt.get()));
-    }
-
-    @Override
-    public ResponseEntity<?> createSingularidadesEstadisticas(SingularidadesEstadisticasModel body)
-    {
-        return ResponseEntity.ok(singularidadesEstadisticasRepository.save(body));
-    }
-
-    @Override
-    public ResponseEntity<?> updateSingularidadesEstadisticas(Integer id, SingularidadesEstadisticasModel body)
-    {
-        return singularidadesEstadisticasRepository.findById(id)
-                .map(existing -> {
-                    body.setSingularidadesestadisticasid(existing.getSingularidadesestadisticasid());
-                    return ResponseEntity.ok(singularidadesEstadisticasRepository.save(body));
-                })
-                .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "No existe singularidad estadistica")));
-    }
-
-    @Override
-    public ResponseEntity<?> deleteSingularidadesEstadisticas(Integer id)
-    {
-        if (!singularidadesEstadisticasRepository.existsById(id))
-        {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "No existe singularidad estadistica"));
-        }
-        singularidadesEstadisticasRepository.deleteById(id);
-        return ResponseEntity.noContent().build();
-    }
 
     public List<Object> getDistinctValuesDynamicSingularidades(String columnName, List<String> grupos)
     {
@@ -1009,6 +541,7 @@ public class SingularidadesServiceImpl implements SingularidadesService
             {
                 Map<String, Object> visibleData = buildVisibleData(camposVisibles, singularidad);
                                 Optional<ProcessAssociateIconModel> findIconUrl = processAssociateIconRepository.findByProceso(singularidad.getProceso());
+                visibleData.put("id", singularidad.getId());
 
                 if(!findIconUrl.isPresent())
                 {
@@ -1069,5 +602,208 @@ public class SingularidadesServiceImpl implements SingularidadesService
         }
     }
 
+
+
+    @Override
+public ResponseEntity<?> filtrarDinamico(Map<String, Object> filtros)
+{
+    try
+    {
+        List<String> gruposUsuario = obtenerGruposCoincidentesConSingularidades();
+        if (gruposUsuario == null || gruposUsuario.isEmpty())
+        {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "No existen grupos asociados al usuario."));
+        }
+
+        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+        CriteriaQuery<SingularidadModel> query = cb.createQuery(SingularidadModel.class);
+        Root<SingularidadModel> root = query.from(SingularidadModel.class);
+
+        List<Predicate> predicates = new ArrayList<>();
+        predicates.add(root.get("grupoLocal").in(gruposUsuario));
+
+        Object fechaInicioObj = filtros.get("fechaInicio");
+        Object fechaFinObj = filtros.get("fechaFin");
+
+        boolean tieneInicio = fechaInicioObj != null && !fechaInicioObj.toString().isBlank();
+        boolean tieneFin = fechaFinObj != null && !fechaFinObj.toString().isBlank();
+
+        if (tieneInicio || tieneFin)
+        {
+            try
+            {
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
+                LocalDate fechaInicio = tieneInicio ? LocalDate.parse(fechaInicioObj.toString(), formatter) : null;
+                LocalDate fechaFin = tieneFin ? LocalDate.parse(fechaFinObj.toString(), formatter) : null;
+
+                ZoneOffset offset = ZoneOffset.of("-03:00");
+
+                OffsetDateTime inicioDelDia = fechaInicio != null ? fechaInicio.atStartOfDay().atOffset(offset) : null;
+                OffsetDateTime finDelDia = fechaFin != null ? fechaFin.atTime(23, 59, 59).atOffset(offset) : null;
+
+                Path<OffsetDateTime> campoFecha = root.get("fechaSingularidad");
+
+                if (inicioDelDia != null && finDelDia != null)
+                {
+                    predicates.add(cb.between(campoFecha, inicioDelDia, finDelDia));
+                }
+                else if (inicioDelDia != null)
+                {
+                    predicates.add(cb.greaterThanOrEqualTo(campoFecha, inicioDelDia));
+                }
+                else
+                {
+                    predicates.add(cb.lessThanOrEqualTo(campoFecha, finDelDia));
+                }
+            }
+            catch (Exception e)
+            {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "Formato de fecha invalido",
+                        "detalle", "Usa formato: 2025-10-04 (solo dia/mes/anio)"
+                ));
+            }
+        }
+
+        filtros.forEach((campo, valor) ->
+        {
+            if (valor == null || campo == null)
+            {
+                return;
+            }
+
+            if (campo.equalsIgnoreCase("fechaInicio") || campo.equalsIgnoreCase("fechaFin"))
+            {
+                return;
+            }
+
+            try
+            {
+                Path<Object> path = root.get(campo);
+
+                if (campo.equalsIgnoreCase("valida"))
+                {
+                    predicates.add(cb.equal(root.get("valida"), Boolean.valueOf(valor.toString())));
+                    return;
+                }
+
+                if (valor instanceof String)
+                {
+                    predicates.add(cb.like(cb.lower(path.as(String.class)),
+                            "%" + valor.toString().toLowerCase() + "%"));
+                }
+                else if (valor instanceof Number)
+                {
+                    predicates.add(cb.equal(path, valor));
+                }
+                else if (valor instanceof Boolean)
+                {
+                    predicates.add(cb.equal(path.as(Boolean.class), (Boolean) valor));
+                }
+                else if (valor instanceof Map)
+                {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> rango = (Map<String, Object>) valor;
+
+                    if (rango.containsKey("min") && rango.containsKey("max"))
+                    {
+                        predicates.add(cb.between(
+                                path.as(Double.class),
+                                cb.literal(((Number) rango.get("min")).doubleValue()),
+                                cb.literal(((Number) rango.get("max")).doubleValue())
+                        ));
+                    }
+                    else if (rango.containsKey("min"))
+                    {
+                        predicates.add(cb.greaterThanOrEqualTo(
+                                path.as(Double.class),
+                                cb.literal(((Number) rango.get("min")).doubleValue())
+                        ));
+                    }
+                    else if (rango.containsKey("max"))
+                    {
+                        predicates.add(cb.lessThanOrEqualTo(
+                                path.as(Double.class),
+                                cb.literal(((Number) rango.get("max")).doubleValue())
+                        ));
+                    }
+                }
+
+            }
+            catch (IllegalArgumentException e)
+            {
+                System.out.println("Campo ignorado: " + campo);
+            }
+        });
+
+        query.where(cb.and(predicates.toArray(new Predicate[0])));
+
+        List<SingularidadModel> result = entityManager.createQuery(query).getResultList();
+
+        List<SingularidadModel> singularidadesNormales = new ArrayList<>();
+        List<SingularidadModel> singularidadesLeidas = new ArrayList<>();
+
+        for (SingularidadModel singularidad : result)
+        {
+            if (singularidad.getValida() == null)
+            {
+                singularidadesNormales.add(singularidad);
+            }
+            else
+            {
+                singularidadesLeidas.add(singularidad);
+            }
+        }
+
+        Map<String, String> iconMap = processAssociateIconRepository.findAll()
+                .stream()
+                .collect(Collectors.toMap(
+                        ProcessAssociateIconModel::getProceso,
+                        ProcessAssociateIconModel::getIconUrl
+                ));
+
+        List<SingularidadModel> normalesConIcono = singularidadesNormales.stream()
+                .peek(s -> s.setIconAssocieteFromProceso(
+                        iconMap.getOrDefault(s.getProceso(), "No existe un icono asociado al proceso.")
+                ))
+                .collect(Collectors.toList());
+
+        List<SingularidadModel> leidasConIcono = singularidadesLeidas.stream()
+                .peek(s -> s.setIconAssocieteFromProceso(
+                        iconMap.getOrDefault(s.getProceso(), "No existe un icono asociado al proceso.")
+                ))
+                .collect(Collectors.toList());
+
+        Object singularidadesActivasRaw = filtros.get("alarmasActivas");
+
+        if (singularidadesActivasRaw != null)
+        {
+            boolean singularidadesActivas = Boolean.parseBoolean(String.valueOf(filtros.get("alarmasActivas")));
+
+            if (singularidadesActivas)
+            {
+                Map<String, Object> response = new HashMap<>();
+                response.put("singularidades", normalesConIcono);
+                response.put("singularidadesLeidas", new ArrayList<>());
+                return ResponseEntity.ok(response);
+            }
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("singularidades", normalesConIcono);
+        response.put("singularidadesLeidas", leidasConIcono);
+
+        return ResponseEntity.ok(response);
+
+    }
+    catch (Exception e)
+    {
+        e.printStackTrace();
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                Map.of("error", "Error al filtrar dinamicamente", "detalle", e.getMessage())
+        );
+    }
+}
 
 }

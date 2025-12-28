@@ -39,7 +39,7 @@ public class VisibleFieldConfigController
             for (VisibleFieldConfigModel visibleField : repository.findAll()) 
             {
                 //verificar que los el visibleField tiene que existir en la columna de alertas
-                if(!visibleField.getFieldName().equals("alertaid") && !visibleField.getFieldName().equals("gpsx") && !visibleField.getFieldName().equals("gpsy") && !visibleField.getFieldName().equals("valida") && !visibleField.getFieldName().equals("gpsy") && !visibleField.getFieldName().equals("userid"))
+                if(!visibleField.getFieldName().equals("alertaid") && !visibleField.getFieldName().equals("gpsx") && !visibleField.getFieldName().equals("gpsy") && !visibleField.getFieldName().equals("valida") && !visibleField.getFieldName().equals("gpsy"))
                 {                    
                     if(visibleField.getFieldName() != null)
                     {

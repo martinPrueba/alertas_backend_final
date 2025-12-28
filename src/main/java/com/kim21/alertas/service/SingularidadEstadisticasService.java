@@ -7,6 +7,7 @@ public interface SingularidadEstadisticasService
 {
     ResponseEntity<?> getAll();
     ResponseEntity<?> getById(Integer id);
+    ResponseEntity<?> getBySingularidadId(Integer singularidadid);
     ResponseEntity<?> create(SingularidadesEstadisticasModel body);
     ResponseEntity<?> update(Integer id, SingularidadesEstadisticasModel body);
     ResponseEntity<?> delete(Integer id);

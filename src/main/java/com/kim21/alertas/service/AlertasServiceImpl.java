@@ -196,8 +196,8 @@ public class AlertasServiceImpl implements AlertasService
     }
 
 @Override
-public ResponseEntity<?> findAlertaById(Integer id) 
-{
+    public ResponseEntity<?> findAlertaById(Integer id) 
+    {
     alertasUtils.sincronizarCamposVisiblesDeAlertasACamposVisibles();
 
     //se eliminan las columnas que hayan sido eliminadas de alertas para su visibilidad en el filtro
@@ -310,6 +310,49 @@ public ResponseEntity<?> findAlertaById(Integer id)
         return grupos;
     }
 
+
+
+    @Override
+    public ResponseEntity<?> getAlertaLeidaById(Integer id) 
+    {
+        if (id == null || id <= 0) 
+        {
+            return ResponseEntity.badRequest().body(Map.of("message", "El id de la alerta es obligatorio y debe ser mayor a 0"));
+        }
+
+        try 
+        {
+            Optional<AlertasModel> alertaOpt = alertasRepository.findById(id);
+            if (alertaOpt.isEmpty()) 
+            {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "No existe una alerta con el ID especificado."));
+            }
+
+            AlertasModel alerta = alertaOpt.get();
+            if (alerta.getFechaReconocimiento() == null) 
+            {
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("message", "La alerta no ha sido marcada como leida."));
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("userid", alerta.getUserid());
+            response.put("comentario", alerta.getComentario());
+            response.put("fechaReconocimiento", alerta.getFechaReconocimiento());
+            response.put("codigo1", alerta.getCodigo1());
+            response.put("codigo2", alerta.getCodigo2());
+
+            return ResponseEntity.ok(response);
+        } 
+        catch (Exception e) 
+        {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                Map.of("error", "Error al obtener la alerta leida", "details", e.getMessage())
+            );
+        }
+    }
 
 
     private String normalizeGroup(String s) 

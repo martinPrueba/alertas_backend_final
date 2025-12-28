@@ -46,6 +46,7 @@ public interface AlertasService {
     ResponseEntity<?> getTipos();
     ResponseEntity<?> reportAlertsDynamic(AlertReportDTO dto);
     ResponseEntity<?> getAllUserGruposLocales();
+    ResponseEntity<?> getAlertaLeidaById(Integer id);
 
 
 }

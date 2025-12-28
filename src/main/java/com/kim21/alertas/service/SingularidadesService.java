@@ -22,4 +22,5 @@ public interface SingularidadesService
     // Extras
     ResponseEntity<?> getTiposSingularidades();
     ResponseEntity<?> reportSingularidadesDynamic(com.kim21.alertas.dto.SingularidadReportDTO dto);
+
 }

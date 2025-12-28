@@ -3,6 +3,10 @@ package com.kim21.alertas.service;
 import com.kim21.alertas.model.SingularidadEstadisticasVisibleFieldModel;
 import com.kim21.alertas.repository.SingularidadEstadisticasVisibleFieldRepository;
 
+import jakarta.transaction.Transactional;
+
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -65,4 +69,28 @@ public class VisibleFieldsConfigSingularidadesEstadisticasServiceImpl implements
         repository.deleteById(id);
         return ResponseEntity.noContent().build();
     }
+
+
+    @Override
+    @Transactional
+    public void updateAllByFieldName(List<SingularidadEstadisticasVisibleFieldModel> lista) {
+        for (SingularidadEstadisticasVisibleFieldModel item : lista) {
+
+            SingularidadEstadisticasVisibleFieldModel existing =
+                    repository.findByFieldName(item.getFieldName());
+
+            if (existing != null) {
+                // actualizar
+                existing.setVisible(item.getVisible());
+                repository.save(existing);
+            } else {
+                // opcional: crear si no existe
+                SingularidadEstadisticasVisibleFieldModel nuevo = new SingularidadEstadisticasVisibleFieldModel();
+                nuevo.setFieldName(item.getFieldName());
+                nuevo.setVisible(item.getVisible());
+                repository.save(nuevo);
+            }
+        }
+    }
+    
 }

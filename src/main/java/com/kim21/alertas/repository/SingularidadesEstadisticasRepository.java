@@ -7,4 +7,5 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface SingularidadesEstadisticasRepository extends JpaRepository<SingularidadesEstadisticasModel, Integer>
 {
+    java.util.List<SingularidadesEstadisticasModel> findAllBySingularidadid(Integer singularidadid);
 }

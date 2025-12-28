@@ -11,7 +11,10 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class SingularidadMarcarLeidaDTO
 {
+    private Integer id;
     private Integer singularidadId;
     private boolean valida;
     private String comentario;
+    private String codigo1;
+    private String codigo2;
 }

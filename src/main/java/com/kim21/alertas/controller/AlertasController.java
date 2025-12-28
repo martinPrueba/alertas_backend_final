@@ -40,6 +40,12 @@ public class AlertasController
         return alertasService.findAlertaById(id);
     }
 
+    @GetMapping("/get-alerta-leida/{id}")
+    public ResponseEntity<?> getAlertaLeidaById(@PathVariable Integer id) 
+    {
+        return alertasService.getAlertaLeidaById(id);
+    }
+
 
 
     @PostMapping("/filter-dynamic")

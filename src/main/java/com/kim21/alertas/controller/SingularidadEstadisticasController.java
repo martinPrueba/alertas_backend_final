@@ -25,6 +25,12 @@ public class SingularidadEstadisticasController
         return service.getById(id);
     }
 
+    @GetMapping("/by-singularidad/{singularidadid}")
+    public ResponseEntity<?> getBySingularidadId(@PathVariable Integer singularidadid)
+    {
+        return service.getBySingularidadId(singularidadid);
+    }
+
     @PostMapping
     public ResponseEntity<?> create(@RequestBody SingularidadesEstadisticasModel body)
     {

@@ -60,6 +60,28 @@ public class SingularidadEstadisticasServiceImpl implements SingularidadEstadist
     }
 
     @Override
+    public ResponseEntity<?> getBySingularidadId(Integer singularidadid)
+    {
+        List<SingularidadesEstadisticasModel> rows = singularidadesEstadisticasRepository.findAllBySingularidadid(singularidadid);
+        if (rows.isEmpty())
+        {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "No existe singularidad estadistica para ese singularidadid"));
+        }
+
+        List<String> camposVisibles = visibleFieldRepository.findAll()
+                .stream()
+                .filter(SingularidadEstadisticasVisibleFieldModel::getVisible)
+                .map(SingularidadEstadisticasVisibleFieldModel::getFieldName)
+                .toList();
+
+        List<Map<String, Object>> body = rows.stream()
+                .map(m -> buildVisibleData(camposVisibles, m))
+                .toList();
+
+        return ResponseEntity.ok(body);
+    }
+
+    @Override
     public ResponseEntity<?> create(SingularidadesEstadisticasModel body)
     {
         return ResponseEntity.ok(singularidadesEstadisticasRepository.save(body));

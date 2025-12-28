@@ -7,4 +7,6 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface SingularidadEstadisticasVisibleFieldRepository extends JpaRepository<SingularidadEstadisticasVisibleFieldModel, Long>
 {
+
+    SingularidadEstadisticasVisibleFieldModel findByFieldName(String fieldName);
 }
