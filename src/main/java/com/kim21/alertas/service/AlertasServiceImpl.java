@@ -276,7 +276,6 @@ public class AlertasServiceImpl implements AlertasService
 public List<String> obtenerGruposDesdeCmd() throws IOException {
 
     List<String> grupos = new ArrayList<>();
-
     String username = System.getProperty("user.name");
 
     ProcessBuilder pb = new ProcessBuilder(
@@ -294,29 +293,37 @@ public List<String> obtenerGruposDesdeCmd() throws IOException {
         String linea;
         while ((linea = reader.readLine()) != null) {
 
+            // NO hacer trim aún (importante)
+            String raw = linea;
+
             linea = linea.trim();
 
-            // Detecta el inicio de los grupos locales
+            // Inicio de sección
             if (linea.startsWith("Miembros del grupo local")) {
                 leyendoGrupos = true;
-                linea = linea.replace("Miembros del grupo local", "").trim();
-            }
 
-            // Si estamos leyendo grupos
-            if (leyendoGrupos) {
-
-                // Fin de la sección
-                if (linea.startsWith("Miembros del grupo global")
-                    || linea.startsWith("Se ha completado")) {
-                    break;
-                }
-
-                // Los grupos vienen con *
-                if (linea.startsWith("*")) {
-                    String grupo = linea.replace("*", "").trim();
+                // 👇 PROCESAR grupo que viene en la misma línea
+                if (raw.contains("*")) {
+                    String grupo = raw.substring(raw.indexOf("*") + 1).trim();
                     if (!grupo.isEmpty()) {
                         grupos.add(grupo.toUpperCase());
                     }
+                }
+                continue;
+            }
+
+            // Fin de sección
+            if (leyendoGrupos &&
+                (linea.startsWith("Miembros del grupo global")
+                 || linea.startsWith("Se ha completado"))) {
+                break;
+            }
+
+            // Grupos siguientes (indentados)
+            if (leyendoGrupos && raw.contains("*")) {
+                String grupo = raw.substring(raw.indexOf("*") + 1).trim();
+                if (!grupo.isEmpty()) {
+                    grupos.add(grupo.toUpperCase());
                 }
             }
         }
@@ -324,6 +331,7 @@ public List<String> obtenerGruposDesdeCmd() throws IOException {
 
     return grupos;
 }
+
 
 
 
