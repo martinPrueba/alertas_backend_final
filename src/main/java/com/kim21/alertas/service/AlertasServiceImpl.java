@@ -272,43 +272,59 @@ public class AlertasServiceImpl implements AlertasService
 
 
 
-    @Override
-    public List<String> obtenerGruposDesdeCmd() throws IOException 
-    {
-        List<String> grupos = new ArrayList<>();
+@Override
+public List<String> obtenerGruposDesdeCmd() throws IOException {
 
-        ProcessBuilder pb = new ProcessBuilder(
-    "C:\\Windows\\System32\\whoami.exe", "/groups"
-        );
+    List<String> grupos = new ArrayList<>();
 
-        pb.redirectErrorStream(true);
-        //System.out.println("OS: " + System.getProperty("os.name"));
-//System.out.println("Comando: " + pb.command());
+    String username = System.getProperty("user.name");
 
-        Process process = pb.start();
-        
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) 
-        {
-            String linea;
-            while ((linea = reader.readLine()) != null) 
-            {
-                //System.out.println("DEBUGCMDDDDDDDDDDDDDDD -> " + linea); // 👈 aquí ves todo lo que devuelve el CMD
+    ProcessBuilder pb = new ProcessBuilder(
+        "cmd.exe", "/c", "net user " + username
+    );
 
-                if (linea.contains("S-1-")) 
-                {
-                    String[] partes = linea.trim().split("\\s{2,}");
-                    if (partes.length > 0) 
-                    {
+    pb.redirectErrorStream(true);
+    Process process = pb.start();
 
-                        grupos.add(partes[0].trim().toUpperCase());
+    boolean leyendoGrupos = false;
+
+    try (BufferedReader reader =
+             new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+
+        String linea;
+        while ((linea = reader.readLine()) != null) {
+
+            linea = linea.trim();
+
+            // Detecta el inicio de los grupos locales
+            if (linea.startsWith("Miembros del grupo local")) {
+                leyendoGrupos = true;
+                linea = linea.replace("Miembros del grupo local", "").trim();
+            }
+
+            // Si estamos leyendo grupos
+            if (leyendoGrupos) {
+
+                // Fin de la sección
+                if (linea.startsWith("Miembros del grupo global")
+                    || linea.startsWith("Se ha completado")) {
+                    break;
+                }
+
+                // Los grupos vienen con *
+                if (linea.startsWith("*")) {
+                    String grupo = linea.replace("*", "").trim();
+                    if (!grupo.isEmpty()) {
+                        grupos.add(grupo.toUpperCase());
                     }
                 }
             }
         }
-
-        
-        return grupos;
     }
+
+    return grupos;
+}
+
 
 
 
@@ -372,7 +388,7 @@ public class AlertasServiceImpl implements AlertasService
         //System.out.println("LLEGAMOS AL METODO BIEN OJO");
 
         List<String> gruposUsuario = obtenerGruposDesdeCmd();
-                //System.out.println("LLEGAMOS AL METODO BIEN OJO1111" +gruposUsuario );
+                System.out.println("LLEGAMOS AL METODO BIEN OJO1111" +gruposUsuario );
 
         if (gruposUsuario.isEmpty()) return Collections.emptyList();
 
